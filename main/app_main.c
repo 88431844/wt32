@@ -1,0 +1,165 @@
+#include <stdbool.h>
+#include <stdint.h>
+#include <inttypes.h>
+#include <stdlib.h>
+
+#include "app_model.h"
+#include "board_wt32.h"
+#include "dashboard_ui.h"
+#include "esp_err.h"
+#include "esp_check.h"
+#include "esp_heap_caps.h"
+#include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
+#include "lvgl.h"
+#include "nvs_flash.h"
+
+static const char *TAG = "wt32_dashboard";
+static lv_disp_drv_t s_display_driver;
+static lv_disp_draw_buf_t s_display_buffer;
+static bool color_transfer_done(esp_lcd_panel_io_handle_t panel_io,
+                                esp_lcd_panel_io_event_data_t *event_data,
+                                void *user_context)
+{
+    (void)panel_io;
+    (void)event_data;
+    lv_disp_flush_ready((lv_disp_drv_t *)user_context);
+    return false;
+}
+
+static void display_flush(lv_disp_drv_t *driver, const lv_area_t *area,
+                          lv_color_t *pixels)
+{
+    esp_err_t err = wt32_board_draw_bitmap(area->x1, area->y1,
+                                            area->x2 + 1, area->y2 + 1, pixels);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "LCD flush failed: %s", esp_err_to_name(err));
+        lv_disp_flush_ready(driver);
+    }
+}
+
+static void touch_read(lv_indev_drv_t *driver, lv_indev_data_t *data)
+{
+    (void)driver;
+    static lv_point_t last_point;
+    wt32_touch_point_t point = {0};
+    if (wt32_board_read_touch(&point)) {
+        last_point.x = point.x;
+        last_point.y = point.y;
+        data->state = LV_INDEV_STATE_PRESSED;
+    } else {
+        data->state = LV_INDEV_STATE_RELEASED;
+    }
+    data->point = last_point;
+}
+
+static void lvgl_tick(void *argument)
+{
+    (void)argument;
+    lv_tick_inc(2);
+}
+
+static esp_err_t init_nvs(void)
+{
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    return err;
+}
+
+static esp_err_t init_lvgl(void)
+{
+    lv_init();
+
+    const size_t buffer_pixels = WT32_LCD_WIDTH * WT32_LCD_DRAW_LINES;
+    lv_color_t *buffer_a = heap_caps_malloc(buffer_pixels * sizeof(lv_color_t),
+                                             MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    lv_color_t *buffer_b = heap_caps_malloc(buffer_pixels * sizeof(lv_color_t),
+                                             MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    if (buffer_a == NULL || buffer_b == NULL) {
+        ESP_LOGE(TAG, "Unable to allocate LVGL DMA buffers");
+        free(buffer_a);
+        free(buffer_b);
+        return ESP_ERR_NO_MEM;
+    }
+
+    lv_disp_draw_buf_init(&s_display_buffer, buffer_a, buffer_b, buffer_pixels);
+    lv_disp_drv_init(&s_display_driver);
+    s_display_driver.hor_res = WT32_LCD_WIDTH;
+    s_display_driver.ver_res = WT32_LCD_HEIGHT;
+    s_display_driver.flush_cb = display_flush;
+    s_display_driver.draw_buf = &s_display_buffer;
+    lv_disp_drv_register(&s_display_driver);
+
+    ESP_RETURN_ON_ERROR(
+        wt32_board_register_color_done_callback(color_transfer_done, &s_display_driver),
+        TAG, "LCD callback");
+
+    static lv_indev_drv_t input_driver;
+    lv_indev_drv_init(&input_driver);
+    input_driver.type = LV_INDEV_TYPE_POINTER;
+    input_driver.read_cb = touch_read;
+    lv_indev_t *pointer = lv_indev_drv_register(&input_driver);
+    if (pointer == NULL) {
+        ESP_LOGE(TAG, "Unable to register LVGL touch input");
+        return ESP_ERR_NO_MEM;
+    }
+    lv_timer_set_period(pointer->driver->read_timer, 10);
+
+    const esp_timer_create_args_t timer_args = {
+        .callback = lvgl_tick,
+        .name = "lvgl_tick",
+    };
+    esp_timer_handle_t timer;
+    ESP_RETURN_ON_ERROR(esp_timer_create(&timer_args, &timer), TAG, "LVGL timer create");
+    ESP_RETURN_ON_ERROR(esp_timer_start_periodic(timer, 2000), TAG, "LVGL timer start");
+    return ESP_OK;
+}
+
+static void ui_task(void *argument)
+{
+    QueueHandle_t snapshot_queue = argument;
+    ESP_ERROR_CHECK(init_lvgl());
+    ESP_ERROR_CHECK(dashboard_ui_create());
+
+    app_snapshot_t snapshot;
+    uint32_t update_count = 0;
+    while (true) {
+        if (xQueueReceive(snapshot_queue, &snapshot, 0) == pdTRUE) {
+            if (update_count < 3) {
+                ESP_LOGI(TAG, "Applying UI revision=%" PRIu32, snapshot.revision);
+            }
+            dashboard_ui_update(&snapshot);
+            update_count++;
+            if (update_count <= 3) {
+                ESP_LOGI(TAG, "Applied UI revision=%" PRIu32, snapshot.revision);
+            }
+            if (update_count % 30 == 0) {
+                ESP_LOGI(TAG, "UI revision=%" PRIu32 " free_internal=%u free_psram=%u",
+                         snapshot.revision,
+                         heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+            }
+        }
+        lv_timer_handler();
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+void app_main(void)
+{
+    ESP_ERROR_CHECK(init_nvs());
+    ESP_ERROR_CHECK(wt32_board_init());
+
+    QueueHandle_t snapshot_queue = app_model_start_mock_provider();
+    ESP_ERROR_CHECK(snapshot_queue != NULL ? ESP_OK : ESP_ERR_NO_MEM);
+
+    BaseType_t created = xTaskCreatePinnedToCore(
+        ui_task, "dashboard_ui", 12 * 1024, snapshot_queue, 5, NULL, 1);
+    ESP_ERROR_CHECK(created == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
+}

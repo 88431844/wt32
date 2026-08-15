@@ -1,0 +1,27 @@
+dependencies:
+  espressif/cmake_utilities:
+    component_hash: 351350613ceafba240b761b4ea991e0f231ac7a9f59a9ee901f751bddc0bb18f
+    source:
+      service_url: https://api.components.espressif.com/
+      type: service
+    version: 0.5.3
+  espressif/esp_lcd_st7796:
+    component_hash: 528a864b7dd447aa78472680a1f3e294c8045b4e64d479d176c3c66aa6f7edee
+    source:
+      service_url: https://api.components.espressif.com/
+      type: service
+    version: 1.4.0
+  idf:
+    component_hash: null
+    source:
+      type: idf
+    version: 4.4.8
+  lvgl/lvgl:
+    component_hash: 948bff879a345149b83065535bbc4a026ce9f47498a22881e432a264b9098015
+    source:
+      service_url: https://api.components.espressif.com/
+      type: service
+    version: 8.3.11
+manifest_hash: dca156f70fee81fdb088fd16da43ea2908fbf80c8c41f421f0143e7996636c2e
+target: esp32
+version: 1.0.0

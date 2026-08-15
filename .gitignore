@@ -1,0 +1,23 @@
+build/
+managed_components/
+sdkconfig
+sdkconfig.old
+__pycache__/
+.pytest_cache/
+.venv/
+.env
+*.pyc
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# Keep local credentials and deploy keys out of source control.
+*.pem
+*.key
+id_ed25519*
+*_deploy_key
+*_deploy_key.pub
+
+# Full flash backups are local recovery artifacts and may contain credentials.
+backups/
