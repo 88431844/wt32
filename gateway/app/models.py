@@ -63,7 +63,7 @@ def _validate_envelope(status: DataStatus, data: Any, error: ErrorDetail | None)
 class HealthData(BaseModel):
     service: str
     version: str
-    mode: Literal["mock"] = "mock"
+    mode: Literal["demo", "mixed", "live"] = "demo"
     uptime_seconds: int = Field(ge=0)
 
 
@@ -91,15 +91,28 @@ class ClockData(BaseModel):
     utc_offset: str
 
 
+class MarketPoint(BaseModel):
+    minute: int = Field(ge=0, le=1439)
+    price: float = Field(gt=0)
+
+
 class StockQuote(BaseModel):
     symbol: str
     name: str
-    currency: str
-    price: float
+    currency: str = "CNY"
+    market_status: Literal["preopen", "open", "lunch", "closed"]
+    trading_date: date
+    price: float = Field(gt=0)
+    previous_close: float = Field(gt=0)
+    open: float = Field(gt=0)
+    close: float | None = Field(default=None, gt=0)
+    high: float = Field(gt=0)
+    low: float = Field(gt=0)
     change: float
     change_percent: float
-    market_status: str
+    updated_at: datetime
     delayed: bool = True
+    points: list[MarketPoint] = Field(default_factory=list, max_length=242)
 
 
 class FuelPrice(BaseModel):
@@ -107,6 +120,24 @@ class FuelPrice(BaseModel):
     unit: str = "CNY/L"
     price: float
     change: float = 0
+
+
+class FuelData(BaseModel):
+    requested_region: str
+    province: str
+    updated_at: datetime
+    prices: list[FuelPrice] = Field(min_length=2, max_length=2)
+
+
+class ProviderResult(BaseModel, Generic[T]):
+    status: DataStatus
+    data: T | None = None
+    error: ErrorDetail | None = None
+
+    @model_validator(mode="after")
+    def validate_provider_payload(self) -> "ProviderResult[T]":
+        _validate_envelope(self.status, self.data, self.error)
+        return self
 
 
 class NewsHeadline(BaseModel):
@@ -117,8 +148,8 @@ class NewsHeadline(BaseModel):
 
 
 class InfoData(BaseModel):
-    stock: StockQuote
-    fuel_prices: list[FuelPrice]
+    stock: ProviderResult[StockQuote]
+    fuel: ProviderResult[FuelData]
     headlines: list[NewsHeadline]
     disclaimer: str
 
@@ -284,7 +315,7 @@ class SettingsData(BaseModel):
     theme: Literal["dark", "light", "auto"]
     brightness_percent: int = Field(ge=5, le=100)
     wifi_configured: bool
-    backend_mode: Literal["mock"] = "mock"
+    backend_mode: Literal["demo", "mixed", "live"] = "demo"
     ota_channel: Literal["stable", "beta"]
 
 
@@ -297,7 +328,6 @@ class SnapshotData(BaseModel):
     nas: SectionEnvelope[NasData]
     antigravity: SectionEnvelope[AntigravityData]
     home: SectionEnvelope[HomeData]
-    album: SectionEnvelope[AlbumData]
     alerts: SectionEnvelope[AlertsData]
     settings: SectionEnvelope[SettingsData]
 

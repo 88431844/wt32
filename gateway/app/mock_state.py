@@ -19,7 +19,6 @@ from .models import (
     DataStatus,
     ErrorDetail,
     ForecastDay,
-    FuelPrice,
     HolidayItem,
     HomeCommandAck,
     HomeCommandRequest,
@@ -37,7 +36,7 @@ from .models import (
     SectionEnvelope,
     SettingsData,
     SnapshotData,
-    StockQuote,
+    ProviderResult,
     TickResult,
     WeatherData,
 )
@@ -140,7 +139,6 @@ class MockState:
                     ),
                 ),
                 home=self._section(HomeData(entities=copy.deepcopy(list(self._entities.values()))), now, 30),
-                album=self._section(self._album(now), now, 300),
                 alerts=self._section(self._alerts(now), now, 30),
                 settings=self._section(self._settings(), now, 300),
             )
@@ -159,37 +157,25 @@ class MockState:
         )
 
     def _info(self, now: datetime) -> InfoData:
-        wobble = ((self.revision % 5) - 2) * 0.03
         return InfoData(
-            stock=StockQuote(
-                symbol="002594.SZ",
-                name="比亚迪",
-                currency="CNY",
-                price=round(286.42 + wobble, 2),
-                change=2.36,
-                change_percent=0.83,
-                market_status="closed",
+            stock=ProviderResult(
+                status=DataStatus.unsupported,
+                error=ErrorDetail(
+                    code="stock_provider_unconfigured",
+                    message="LongPort stock credentials are not configured.",
+                    retryable=False,
+                ),
             ),
-            fuel_prices=[
-                FuelPrice(grade="92#", price=7.58, change=-0.12),
-                FuelPrice(grade="95#", price=8.21, change=-0.13),
-                FuelPrice(grade="98#", price=9.19, change=-0.14),
-            ],
-            headlines=[
-                NewsHeadline(
-                    id="mock-news-1",
-                    title="新能源与储能板块今日活跃",
-                    source="Mock RSS",
-                    published_at=now - timedelta(minutes=18),
+            fuel=ProviderResult(
+                status=DataStatus.unsupported,
+                error=ErrorDetail(
+                    code="fuel_provider_unconfigured",
+                    message="ShowAPI fuel credentials are not configured.",
+                    retryable=False,
                 ),
-                NewsHeadline(
-                    id="mock-news-2",
-                    title="深圳发布周末交通出行提醒",
-                    source="Mock Local",
-                    published_at=now - timedelta(hours=1),
-                ),
-            ],
-            disclaimer="Mock data only; not investment advice.",
+            ),
+            headlines=[],
+            disclaimer="Live providers are not configured; no fabricated market values are shown.",
         )
 
     def _calendar(self, today: date) -> CalendarData:
@@ -315,6 +301,7 @@ class MockState:
             theme="dark",
             brightness_percent=78,
             wifi_configured=False,
+            backend_mode="demo",
             ota_channel="stable",
         )
 

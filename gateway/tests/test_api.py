@@ -3,7 +3,15 @@ from fastapi.testclient import TestClient
 
 from app import main as main_module
 from app.config import Settings
-from app.models import ApiEnvelope, DataStatus, ErrorDetail
+from app.models import (
+    ApiEnvelope,
+    DataStatus,
+    ErrorDetail,
+    FuelData,
+    FuelPrice,
+    MarketPoint,
+    StockQuote,
+)
 
 
 client = TestClient(main_module.app)
@@ -21,7 +29,7 @@ def test_healthz() -> None:
     assert response.status_code == 200
     body = response.json()
     assert_envelope(body)
-    assert body["data"]["mode"] == "mock"
+    assert body["data"]["mode"] == "demo"
 
 
 def test_bootstrap_lists_all_pages_in_order() -> None:
@@ -32,7 +40,7 @@ def test_bootstrap_lists_all_pages_in_order() -> None:
     pages = body["data"]["pages"]
     expected_ids = [
         "info", "calendar", "weather", "pve", "nas",
-        "antigravity", "home", "album", "alerts", "settings",
+        "antigravity", "home", "settings",
     ]
     assert [page["id"] for page in pages] == expected_ids
     assert [page["order"] for page in pages] == list(range(len(expected_ids)))
@@ -45,7 +53,7 @@ def test_snapshot_contains_every_section_and_unsupported_antigravity() -> None:
     assert_envelope(body)
     expected = {
         "clock", "info", "calendar", "weather", "pve", "nas",
-        "antigravity", "home", "album", "alerts", "settings",
+        "antigravity", "home", "alerts", "settings",
     }
     assert set(body["data"]) == expected
     assert body["data"]["weather"]["status"] == "fresh"
@@ -53,6 +61,45 @@ def test_snapshot_contains_every_section_and_unsupported_antigravity() -> None:
     assert antigravity["status"] == "unsupported"
     assert antigravity["data"]["integration"] == "experimental"
     assert antigravity["error"]["code"] == "machine_readable_api_unavailable"
+
+
+def test_info_model_carries_market_history_and_two_fuel_grades() -> None:
+    info = client.get("/v1/snapshot").json()["data"]["info"]["data"]
+    assert info["stock"]["status"] == "unsupported"
+    assert info["fuel"]["status"] == "unsupported"
+    assert "album" not in client.get("/v1/snapshot").json()["data"]
+
+
+def test_live_information_models_validate_closed_quote_and_fuel_update() -> None:
+    from datetime import date, datetime
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo("Asia/Shanghai")
+    quote = StockQuote(
+        symbol="002594.SZ",
+        name="比亚迪",
+        market_status="closed",
+        trading_date=date(2026, 8, 14),
+        price=112.80,
+        previous_close=111.22,
+        open=111.26,
+        close=112.80,
+        high=114.05,
+        low=110.91,
+        change=1.58,
+        change_percent=1.42,
+        updated_at=datetime(2026, 8, 14, 15, 5, tzinfo=tz),
+        delayed=False,
+        points=[MarketPoint(minute=570, price=111.26), MarketPoint(minute=900, price=112.80)],
+    )
+    fuel = FuelData(
+        requested_region="深圳",
+        province="广东",
+        updated_at=datetime(2026, 8, 15, 7, tzinfo=tz),
+        prices=[FuelPrice(grade="92#", price=7.80), FuelPrice(grade="95#", price=8.45)],
+    )
+    assert quote.points[-1].price == quote.close
+    assert [price.grade for price in fuel.prices] == ["92#", "95#"]
 
 
 def test_tick_increments_revision() -> None:

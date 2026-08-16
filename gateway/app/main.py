@@ -102,8 +102,6 @@ def bootstrap_data() -> BootstrapData:
         ("nas", "群晖 NAS", False),
         ("antigravity", "Antigravity", False),
         ("home", "智能家居", True),
-        ("album", "相册", True),
-        ("alerts", "告警中心", True),
         ("settings", "设置", True),
     ]
     return BootstrapData(
@@ -129,6 +127,7 @@ def healthz() -> ApiEnvelope[HealthData]:
     return envelope(HealthData(
         service=settings.app_name,
         version=__version__,
+        mode="demo",
         uptime_seconds=state.uptime_seconds,
     ))
 
