@@ -11,6 +11,7 @@ __pycache__/
 .idea/
 .vscode/
 *.log
+.superpowers/
 
 # Keep local credentials and deploy keys out of source control.
 *.pem
