@@ -30,10 +30,12 @@ def test_bootstrap_lists_all_pages_in_order() -> None:
     body = response.json()
     assert_envelope(body)
     pages = body["data"]["pages"]
-    assert len(pages) == 11
-    assert [page["order"] for page in pages] == list(range(11))
-    assert "music" not in {page["id"] for page in pages}
-    assert "alerts" in {page["id"] for page in pages}
+    expected_ids = [
+        "info", "calendar", "weather", "pve", "nas",
+        "antigravity", "home", "album", "alerts", "settings",
+    ]
+    assert [page["id"] for page in pages] == expected_ids
+    assert [page["order"] for page in pages] == list(range(len(expected_ids)))
 
 
 def test_snapshot_contains_every_section_and_unsupported_antigravity() -> None:

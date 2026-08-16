@@ -15,11 +15,9 @@
 LV_FONT_DECLARE(app_font_14);
 LV_FONT_DECLARE(app_font_18);
 
-#define PAGE_COUNT 11
+#define PAGE_COUNT 10
 #define CONTENT_HEIGHT 264
 #define MAX_THEME_TEXT_OBJECTS 180
-#define CLOCK_CANVAS_WIDTH 420
-#define CLOCK_CANVAS_HEIGHT 126
 
 #define COLOR_BG_DARK 0x10161A
 #define COLOR_BG_LIGHT 0xEDF2F4
@@ -49,8 +47,6 @@ typedef struct {
     lv_obj_t *pages[PAGE_COUNT];
     lv_obj_t *dots[PAGE_COUNT];
 
-    lv_obj_t *time_canvas;
-    lv_color_t *time_buffer;
     lv_obj_t *market_price;
     lv_obj_t *market_change;
     lv_obj_t *market_chart;
@@ -72,6 +68,7 @@ typedef struct {
     lv_obj_t *brightness_slider;
     lv_obj_t *theme_switch;
     lv_obj_t *theme_value;
+    lv_obj_t *rotation_switch;
     lv_obj_t *weather_page;
     lv_obj_t *home_page;
     lv_obj_t *room_tabs;
@@ -109,7 +106,6 @@ static lv_style_t s_style_card_alt;
 static lv_style_t s_style_button;
 
 static uint32_t update_navigation(void);
-static void draw_digital_clock(uint8_t hour, uint8_t minute);
 
 static lv_color_t color(uint32_t value)
 {
@@ -382,168 +378,6 @@ static lv_obj_t *add_tile(int column)
     lv_obj_clear_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
     s_ui.pages[column] = tile;
     return tile;
-}
-
-enum {
-    SEGMENT_A = 1U << 0,
-    SEGMENT_B = 1U << 1,
-    SEGMENT_C = 1U << 2,
-    SEGMENT_D = 1U << 3,
-    SEGMENT_E = 1U << 4,
-    SEGMENT_F = 1U << 5,
-    SEGMENT_G = 1U << 6,
-};
-
-static const uint8_t digit_segments[10] = {
-    SEGMENT_A | SEGMENT_B | SEGMENT_C | SEGMENT_D | SEGMENT_E | SEGMENT_F,
-    SEGMENT_B | SEGMENT_C,
-    SEGMENT_A | SEGMENT_B | SEGMENT_D | SEGMENT_E | SEGMENT_G,
-    SEGMENT_A | SEGMENT_B | SEGMENT_C | SEGMENT_D | SEGMENT_G,
-    SEGMENT_B | SEGMENT_C | SEGMENT_F | SEGMENT_G,
-    SEGMENT_A | SEGMENT_C | SEGMENT_D | SEGMENT_F | SEGMENT_G,
-    SEGMENT_A | SEGMENT_C | SEGMENT_D | SEGMENT_E | SEGMENT_F | SEGMENT_G,
-    SEGMENT_A | SEGMENT_B | SEGMENT_C,
-    SEGMENT_A | SEGMENT_B | SEGMENT_C | SEGMENT_D | SEGMENT_E | SEGMENT_F | SEGMENT_G,
-    SEGMENT_A | SEGMENT_B | SEGMENT_C | SEGMENT_D | SEGMENT_F | SEGMENT_G,
-};
-
-static void draw_horizontal_segment(int x, int y, lv_color_t segment_color)
-{
-    lv_draw_rect_dsc_t style;
-    lv_draw_rect_dsc_init(&style);
-    style.bg_opa = LV_OPA_COVER;
-    style.bg_color = segment_color;
-    lv_point_t points[] = {
-        {x, y + 6}, {x + 6, y}, {x + 54, y},
-        {x + 60, y + 6}, {x + 54, y + 12}, {x + 6, y + 12},
-    };
-    lv_canvas_draw_polygon(s_ui.time_canvas, points, 6, &style);
-}
-
-static void draw_vertical_segment(int x, int y, lv_color_t segment_color)
-{
-    lv_draw_rect_dsc_t style;
-    lv_draw_rect_dsc_init(&style);
-    style.bg_opa = LV_OPA_COVER;
-    style.bg_color = segment_color;
-    lv_point_t points[] = {
-        {x + 6, y}, {x + 12, y + 6}, {x + 12, y + 33},
-        {x + 6, y + 39}, {x, y + 33}, {x, y + 6},
-    };
-    lv_canvas_draw_polygon(s_ui.time_canvas, points, 6, &style);
-}
-
-static void draw_segment(int x, int y, uint8_t segment, lv_color_t segment_color)
-{
-    switch (segment) {
-        case SEGMENT_A: draw_horizontal_segment(x + 6, y, segment_color); break;
-        case SEGMENT_B: draw_vertical_segment(x + 60, y + 6, segment_color); break;
-        case SEGMENT_C: draw_vertical_segment(x + 60, y + 51, segment_color); break;
-        case SEGMENT_D: draw_horizontal_segment(x + 6, y + 90, segment_color); break;
-        case SEGMENT_E: draw_vertical_segment(x, y + 51, segment_color); break;
-        case SEGMENT_F: draw_vertical_segment(x, y + 6, segment_color); break;
-        case SEGMENT_G: draw_horizontal_segment(x + 6, y + 45, segment_color); break;
-        default: break;
-    }
-}
-
-static void draw_digit(int x, int y, uint8_t digit)
-{
-    static const uint8_t segments[] = {
-        SEGMENT_A, SEGMENT_B, SEGMENT_C, SEGMENT_D,
-        SEGMENT_E, SEGMENT_F, SEGMENT_G,
-    };
-    const lv_color_t inactive = color(0x95A492);
-    const lv_color_t active = color(0x18231D);
-    const uint8_t mask = digit_segments[digit % 10];
-
-    for (size_t i = 0; i < sizeof(segments); ++i) {
-        draw_segment(x, y, segments[i], inactive);
-    }
-    for (size_t i = 0; i < sizeof(segments); ++i) {
-        if ((mask & segments[i]) != 0) {
-            draw_segment(x, y, segments[i], active);
-        }
-    }
-}
-
-static void draw_digital_clock(uint8_t hour, uint8_t minute)
-{
-    if (s_ui.time_canvas == NULL || s_ui.time_buffer == NULL) return;
-
-    const lv_color_t lcd_background = color(0xB4C1AF);
-    const lv_color_t lcd_ink = color(0x18231D);
-    lv_canvas_fill_bg(s_ui.time_canvas, lcd_background, LV_OPA_COVER);
-
-    lv_draw_rect_dsc_t panel;
-    lv_draw_rect_dsc_init(&panel);
-    panel.bg_opa = LV_OPA_COVER;
-    panel.bg_color = lcd_background;
-    panel.border_opa = LV_OPA_COVER;
-    panel.border_color = color(0x566359);
-    panel.border_width = 2;
-    panel.radius = 5;
-    lv_canvas_draw_rect(s_ui.time_canvas, 0, 0,
-                        CLOCK_CANVAS_WIDTH, CLOCK_CANVAS_HEIGHT, &panel);
-
-    const uint8_t digits[] = {hour / 10, hour % 10, minute / 10, minute % 10};
-    const int positions[] = {24, 106, 242, 324};
-    for (size_t i = 0; i < 4; ++i) {
-        draw_digit(positions[i], 12, digits[i]);
-    }
-
-    lv_draw_rect_dsc_t colon;
-    lv_draw_rect_dsc_init(&colon);
-    colon.bg_opa = LV_OPA_COVER;
-    colon.bg_color = lcd_ink;
-    colon.radius = 3;
-    lv_canvas_draw_rect(s_ui.time_canvas, 207, 39, 12, 12, &colon);
-    lv_canvas_draw_rect(s_ui.time_canvas, 207, 75, 12, 12, &colon);
-}
-
-static void time_canvas_delete_event(lv_event_t *event)
-{
-    if (lv_event_get_code(event) != LV_EVENT_DELETE || s_ui.time_buffer == NULL) return;
-    heap_caps_free(s_ui.time_buffer);
-    s_ui.time_buffer = NULL;
-    s_ui.time_canvas = NULL;
-}
-
-static void create_time_page(lv_obj_t *page)
-{
-    const size_t buffer_size = LV_CANVAS_BUF_SIZE_TRUE_COLOR(
-        CLOCK_CANVAS_WIDTH, CLOCK_CANVAS_HEIGHT);
-    s_ui.time_buffer = heap_caps_malloc(buffer_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (s_ui.time_buffer != NULL) {
-        s_ui.time_canvas = lv_canvas_create(page);
-        lv_obj_add_event_cb(s_ui.time_canvas, time_canvas_delete_event,
-                            LV_EVENT_DELETE, NULL);
-        lv_canvas_set_buffer(s_ui.time_canvas, s_ui.time_buffer,
-                             CLOCK_CANVAS_WIDTH, CLOCK_CANVAS_HEIGHT,
-                             LV_IMG_CF_TRUE_COLOR);
-        lv_obj_set_pos(s_ui.time_canvas, 30, 8);
-        draw_digital_clock(22, 18);
-    } else {
-        lv_obj_t *fallback = make_label(page, "22:18", 50, 30, 380,
-                                        &lv_font_montserrat_48, false);
-        lv_obj_set_style_text_align(fallback, LV_TEXT_ALIGN_CENTER, 0);
-    }
-
-    lv_obj_t *date = make_label(page, "8月14日 · 星期五", 70, 143, 340,
-                                &app_font_18, true);
-    lv_obj_set_style_text_align(date, LV_TEXT_ALIGN_CENTER, 0);
-
-    lv_obj_t *footer = make_card(page, 30, 177, 420, 54);
-    lv_obj_t *lunar = make_label(footer, "农历七月初二", 12, 10, 130, &app_font_14, true);
-    lv_obj_set_style_text_align(lunar, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_t *sunrise = make_accent_label(footer, "日出 05:58", 145, 10, 125,
-                                          &app_font_14, COLOR_ORANGE);
-    lv_obj_set_style_text_align(sunrise, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_t *solar = make_label(footer, "处暑 8天后", 275, 10, 130, &app_font_14, true);
-    lv_obj_set_style_text_align(solar, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_t *mock = make_accent_label(page, "LOCAL MOCK", 358, 238, 100,
-                                       &lv_font_montserrat_14, COLOR_BLUE);
-    lv_obj_set_style_text_align(mock, LV_TEXT_ALIGN_RIGHT, 0);
 }
 
 static void create_market_page(lv_obj_t *page)
@@ -1108,6 +942,35 @@ static void theme_event(lv_event_t *event)
     }
 }
 
+static void rotation_event(lv_event_t *event)
+{
+    if (lv_event_get_code(event) != LV_EVENT_VALUE_CHANGED) return;
+
+    lv_obj_t *switch_obj = lv_event_get_target(event);
+    const bool requested = lv_obj_has_state(switch_obj, LV_STATE_CHECKED);
+    const bool previous = wt32_board_get_rotation_180();
+    if (requested == previous) return;
+
+    esp_err_t err = wt32_board_set_rotation_180(requested);
+    if (err != ESP_OK) {
+        if (previous) lv_obj_add_state(switch_obj, LV_STATE_CHECKED);
+        else lv_obj_clear_state(switch_obj, LV_STATE_CHECKED);
+        ESP_LOGW(TAG, "Unable to apply rotation: %s", esp_err_to_name(err));
+        return;
+    }
+
+    err = save_setting("rotate180", requested ? 1 : 0);
+    if (err != ESP_OK) {
+        (void)wt32_board_set_rotation_180(previous);
+        if (previous) lv_obj_add_state(switch_obj, LV_STATE_CHECKED);
+        else lv_obj_clear_state(switch_obj, LV_STATE_CHECKED);
+        ESP_LOGW(TAG, "Unable to save rotation: %s", esp_err_to_name(err));
+        return;
+    }
+
+    lv_obj_invalidate(s_ui.root);
+}
+
 static void create_setting_tile(lv_obj_t *page, const char *title, const char *value,
                                 int x, int y, int width, uint32_t accent,
                                 lv_event_cb_t callback, const void *user_data)
@@ -1171,6 +1034,24 @@ static void create_settings_page(lv_obj_t *page)
     lv_obj_add_event_cb(s_ui.theme_switch, theme_event, LV_EVENT_VALUE_CHANGED, NULL);
     make_label(page, "浅色", 378, 228, 74, &app_font_14, true);
 
+    s_ui.rotation_switch = lv_switch_create(page);
+    lv_obj_clear_flag(s_ui.rotation_switch, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
+    lv_obj_set_pos(s_ui.rotation_switch, 290, 190);
+    lv_obj_set_size(s_ui.rotation_switch, 68, 34);
+    lv_obj_set_style_bg_color(s_ui.rotation_switch, color(COLOR_GREEN),
+                              LV_PART_INDICATOR | LV_STATE_CHECKED);
+    const uint8_t rotate180 = load_setting("rotate180", 1);
+    const bool rotation_enabled = rotate180 != 0;
+    if (wt32_board_set_rotation_180(rotation_enabled) != ESP_OK) {
+        ESP_LOGW(TAG, "Unable to apply saved rotation; keeping board state");
+    }
+    if (wt32_board_get_rotation_180()) {
+        lv_obj_add_state(s_ui.rotation_switch, LV_STATE_CHECKED);
+    }
+    make_label(page, "画面 180°", 278, 228, 92, &app_font_14, true);
+    lv_obj_add_event_cb(s_ui.rotation_switch, rotation_event,
+                        LV_EVENT_VALUE_CHANGED, NULL);
+
     uint8_t brightness = load_setting("brightness", 72);
     uint8_t light = load_setting("light", 0);
     if (brightness < 10 || brightness > 100) brightness = 72;
@@ -1183,8 +1064,8 @@ static void create_settings_page(lv_obj_t *page)
 }
 
 static const char *page_titles[PAGE_COUNT] = {
-    "时间", "资讯", "日历", "天气", "PVE", "群晖 NAS",
-    "Antigravity", "智能家居", "相册", "告警", "设置",
+    "资讯", "日历", "天气", "PVE", "群晖 NAS", "Antigravity",
+    "智能家居", "相册", "告警", "设置",
 };
 
 static uint32_t get_active_page_index(void)
@@ -1299,7 +1180,7 @@ esp_err_t dashboard_ui_create(void)
     lv_obj_clear_flag(s_ui.status_bar, LV_OBJ_FLAG_SCROLLABLE);
     make_accent_label(s_ui.status_bar, "•", 12, 6, 20,
                       &lv_font_montserrat_14, COLOR_GREEN);
-    s_ui.status_title = make_label(s_ui.status_bar, "时间", 32, 5, 150,
+    s_ui.status_title = make_label(s_ui.status_bar, "资讯", 32, 5, 150,
                                    &app_font_14, false);
     s_ui.status_time = make_label(s_ui.status_bar, "22:18", 354, 5, 70,
                                   &lv_font_montserrat_14, true);
@@ -1321,17 +1202,16 @@ esp_err_t dashboard_ui_create(void)
     for (int i = 0; i < PAGE_COUNT; ++i) {
         add_tile(i);
     }
-    create_time_page(s_ui.pages[0]);
-    create_market_page(s_ui.pages[1]);
-    create_calendar_page(s_ui.pages[2]);
-    create_weather_page(s_ui.pages[3]);
-    create_pve_page(s_ui.pages[4]);
-    create_nas_page(s_ui.pages[5]);
-    create_quota_page(s_ui.pages[6]);
-    create_home_page(s_ui.pages[7]);
-    create_gallery_page(s_ui.pages[8]);
-    create_alert_page(s_ui.pages[9]);
-    create_settings_page(s_ui.pages[10]);
+    create_market_page(s_ui.pages[0]);
+    create_calendar_page(s_ui.pages[1]);
+    create_weather_page(s_ui.pages[2]);
+    create_pve_page(s_ui.pages[3]);
+    create_nas_page(s_ui.pages[4]);
+    create_quota_page(s_ui.pages[5]);
+    create_home_page(s_ui.pages[6]);
+    create_gallery_page(s_ui.pages[7]);
+    create_alert_page(s_ui.pages[8]);
+    create_settings_page(s_ui.pages[9]);
     create_navigation();
     lv_obj_set_tile_id(s_ui.tileview, 0, 0, LV_ANIM_OFF);
     update_navigation();
@@ -1356,7 +1236,6 @@ void dashboard_ui_update(const app_snapshot_t *snapshot)
                               snapshot->minute != previous->minute;
 
     if (time_changed) {
-        draw_digital_clock(snapshot->hour, snapshot->minute);
         lv_label_set_text_fmt(s_ui.status_time, "%02u:%02u",
                               snapshot->hour, snapshot->minute);
         lv_label_set_text_fmt(s_ui.weather_time, "%02u:%02u",

@@ -28,6 +28,8 @@ esp_err_t wt32_board_register_color_done_callback(
 bool wt32_board_read_touch(wt32_touch_point_t *point);
 void wt32_board_set_brightness(uint8_t percent);
 uint8_t wt32_board_get_brightness(void);
+esp_err_t wt32_board_set_rotation_180(bool enabled);
+bool wt32_board_get_rotation_180(void);
 
 #ifdef __cplusplus
 }

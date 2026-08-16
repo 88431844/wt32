@@ -41,6 +41,7 @@ static esp_lcd_panel_io_handle_t s_panel_io;
 static esp_lcd_panel_handle_t s_panel;
 static uint8_t s_brightness = 72;
 static bool s_touch_ready;
+static bool s_rotation_180 = true;
 
 static esp_err_t init_backlight(void)
 {
@@ -103,7 +104,8 @@ static esp_err_t init_display(void)
     ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(s_panel), TAG, "LCD reset");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_init(s_panel), TAG, "LCD init");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_swap_xy(s_panel, true), TAG, "LCD swap XY");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_mirror(s_panel, false, false), TAG, "LCD mirror");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_mirror(s_panel, s_rotation_180, s_rotation_180),
+                        TAG, "LCD mirror");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_invert_color(s_panel, false), TAG, "LCD inversion");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(s_panel, true), TAG, "LCD display on");
     return ESP_OK;
@@ -190,9 +192,16 @@ bool wt32_board_read_touch(wt32_touch_point_t *point)
         return false;
     }
 
-    // Matches the official WT32-SC01 TOUCH_DIR_BTLR landscape orientation.
-    int x = raw_y;
-    int y = (TOUCH_NATIVE_WIDTH - 1) - raw_x;
+    int x;
+    int y;
+    if (s_rotation_180) {
+        // Rotate the original WT32-SC01 landscape touch mapping by 180 degrees.
+        x = (TOUCH_NATIVE_HEIGHT - 1) - raw_y;
+        y = raw_x;
+    } else {
+        x = raw_y;
+        y = (TOUCH_NATIVE_WIDTH - 1) - raw_x;
+    }
     if (x < 0) x = 0;
     if (x >= WT32_LCD_WIDTH) x = WT32_LCD_WIDTH - 1;
     if (y < 0) y = 0;
@@ -218,4 +227,21 @@ void wt32_board_set_brightness(uint8_t percent)
 uint8_t wt32_board_get_brightness(void)
 {
     return s_brightness;
+}
+
+esp_err_t wt32_board_set_rotation_180(bool enabled)
+{
+    if (s_panel != NULL) {
+        esp_err_t err = esp_lcd_panel_mirror(s_panel, enabled, enabled);
+        if (err != ESP_OK) {
+            return err;
+        }
+    }
+    s_rotation_180 = enabled;
+    return ESP_OK;
+}
+
+bool wt32_board_get_rotation_180(void)
+{
+    return s_rotation_180;
 }

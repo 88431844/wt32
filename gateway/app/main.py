@@ -95,7 +95,6 @@ def require_write_token(
 
 def bootstrap_data() -> BootstrapData:
     definitions = [
-        ("clock", "时间", False),
         ("info", "资讯", False),
         ("calendar", "日历", False),
         ("weather", "天气", False),

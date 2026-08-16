@@ -188,13 +188,13 @@ draw-buffer descriptor. This is required because LVGL waits for the previous DMA
 transfer inside `lv_timer_handler()` before reusing a partial double buffer.
 
 The display uses two internal DMA-capable `480 x 20` RGB565 draw buffers (38,400
-bytes total). Rotation is performed by the ST7796 controller with `swap_xy`; no
-full framebuffer or LVGL software rotation is used. The touch transform matches
-the original WT32 `TOUCH_DIR_BTLR` profile:
+bytes total). Rotation is performed by the ST7796 controller with `swap_xy` and
+dual-axis mirroring; no full framebuffer or LVGL software rotation is used. The
+touch transform applies the same 180-degree orientation:
 
 ```text
-screen_x = raw_y
-screen_y = 319 - raw_x
+screen_x = 479 - raw_y
+screen_y = raw_x
 ```
 
 ## Directory Layout
@@ -214,7 +214,7 @@ sdkconfig.defaults reproducible project defaults
 ## Dashboard Gateway
 
 `gateway/` is a separately runnable FastAPI prototype. It exposes bootstrap and
-11-page snapshot responses, a deterministic Mock tick, and idempotent
+11-section snapshot responses, a deterministic Mock tick, and idempotent
 Home Assistant-style commands. The two mutating endpoints are protected by an
 `X-API-Token`; Docker fails closed when no token is configured.
 
