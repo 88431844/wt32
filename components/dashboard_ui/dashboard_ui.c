@@ -1271,9 +1271,9 @@ void dashboard_ui_update(const app_snapshot_t *snapshot)
         lv_label_set_text_fmt(s_ui.quota_value, "%d%%",
                               snapshot->antigravity_remaining);
     }
-    if (first || snapshot->alert_critical != previous->alert_critical ||
+    if (s_ui.alert_counts != NULL && (first || snapshot->alert_critical != previous->alert_critical ||
         snapshot->alert_warning != previous->alert_warning ||
-        snapshot->alert_info != previous->alert_info) {
+        snapshot->alert_info != previous->alert_info)) {
         lv_label_set_text_fmt(s_ui.alert_counts, "严重 %d   警告 %d   信息 %d",
                               snapshot->alert_critical, snapshot->alert_warning,
                               snapshot->alert_info);
