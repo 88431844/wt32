@@ -15,8 +15,8 @@
 LV_FONT_DECLARE(app_font_14);
 LV_FONT_DECLARE(app_font_18);
 
-#define PAGE_COUNT 10
-#define CONTENT_HEIGHT 264
+#define PAGE_COUNT 8
+#define CONTENT_HEIGHT 260
 #define MAX_THEME_TEXT_OBJECTS 180
 
 #define COLOR_BG_DARK 0x10161A
@@ -45,7 +45,6 @@ typedef struct {
     lv_obj_t *tileview;
     lv_obj_t *page_bar;
     lv_obj_t *pages[PAGE_COUNT];
-    lv_obj_t *dots[PAGE_COUNT];
 
     lv_obj_t *market_price;
     lv_obj_t *market_change;
@@ -1065,7 +1064,7 @@ static void create_settings_page(lv_obj_t *page)
 
 static const char *page_titles[PAGE_COUNT] = {
     "资讯", "日历", "天气", "PVE", "群晖 NAS", "Antigravity",
-    "智能家居", "相册", "告警", "设置",
+    "智能家居", "设置",
 };
 
 static uint32_t get_active_page_index(void)
@@ -1084,12 +1083,11 @@ static uint32_t update_navigation(void)
     const uint32_t column = get_active_page_index();
     lv_label_set_text(s_ui.status_title, page_titles[column]);
     for (int i = 0; i < PAGE_COUNT; ++i) {
-        lv_obj_t *dot = s_ui.dots[i];
+        lv_obj_t *tab = lv_obj_get_child(s_ui.page_bar, i);
+        if (tab == NULL) continue;
         const bool active = (uint32_t)i == column;
-        lv_obj_set_size(dot, active ? 8 : 6, active ? 8 : 6);
-        lv_obj_set_style_bg_opa(dot, active ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
-        lv_obj_set_style_bg_color(dot, color(s_ui.light_theme ? COLOR_TEXT_LIGHT : COLOR_TEXT_DARK), 0);
-        lv_obj_set_style_border_color(dot, color(s_ui.light_theme ? COLOR_MUTED_LIGHT : COLOR_MUTED_DARK), 0);
+        lv_obj_set_style_bg_color(tab, color(active ? COLOR_BLUE : (s_ui.light_theme ? COLOR_SURFACE_LIGHT : COLOR_SURFACE_DARK)), 0);
+        lv_obj_set_style_bg_opa(tab, LV_OPA_COVER, 0);
     }
     return column;
 }
@@ -1124,7 +1122,7 @@ static void tileview_scroll_event(lv_event_t *event)
     dashboard_ui_update(&snapshot);
 }
 
-static void dot_event(lv_event_t *event)
+static void tab_event(lv_event_t *event)
 {
     if (lv_event_get_code(event) != LV_EVENT_CLICKED) return;
     int column = (int)(intptr_t)lv_event_get_user_data(event);
@@ -1136,28 +1134,21 @@ static void create_navigation(void)
     s_ui.page_bar = lv_obj_create(s_ui.root);
     lv_obj_remove_style_all(s_ui.page_bar);
     lv_obj_add_style(s_ui.page_bar, &s_style_status, 0);
-    lv_obj_set_pos(s_ui.page_bar, 0, 294);
-    lv_obj_set_size(s_ui.page_bar, WT32_LCD_WIDTH, 26);
+    lv_obj_set_pos(s_ui.page_bar, 0, 30);
+    lv_obj_set_size(s_ui.page_bar, WT32_LCD_WIDTH, 30);
     lv_obj_clear_flag(s_ui.page_bar, LV_OBJ_FLAG_SCROLLABLE);
 
-    const int start_x = (WT32_LCD_WIDTH - PAGE_COUNT * 24) / 2;
     for (int i = 0; i < PAGE_COUNT; ++i) {
         lv_obj_t *hit = lv_btn_create(s_ui.page_bar);
         lv_obj_remove_style_all(hit);
-        lv_obj_set_pos(hit, start_x + i * 24, 1);
-        lv_obj_set_size(hit, 24, 24);
-        lv_obj_set_style_bg_opa(hit, LV_OPA_TRANSP, 0);
-        lv_obj_add_event_cb(hit, dot_event, LV_EVENT_CLICKED, (void *)(intptr_t)i);
-
-        lv_obj_t *dot = lv_obj_create(hit);
-        lv_obj_remove_style_all(dot);
-        lv_obj_set_size(dot, 6, 6);
-        lv_obj_center(dot);
-        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_border_width(dot, 1, 0);
-        lv_obj_set_style_border_color(dot, color(COLOR_MUTED_DARK), 0);
-        lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
-        s_ui.dots[i] = dot;
+        const int tab_width = WT32_LCD_WIDTH / PAGE_COUNT;
+        lv_obj_set_pos(hit, i * tab_width, 0);
+        lv_obj_set_size(hit, tab_width, 30);
+        lv_obj_set_style_radius(hit, 0, 0);
+        lv_obj_add_event_cb(hit, tab_event, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        lv_obj_t *label = make_label_internal(hit, page_titles[i], 0, 4, tab_width,
+                                               &app_font_14, false, true);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
     }
 }
 
@@ -1190,7 +1181,7 @@ esp_err_t dashboard_ui_create(void)
 
     s_ui.tileview = lv_tileview_create(s_ui.root);
     lv_obj_remove_style_all(s_ui.tileview);
-    lv_obj_set_pos(s_ui.tileview, 0, 30);
+    lv_obj_set_pos(s_ui.tileview, 0, 60);
     lv_obj_set_size(s_ui.tileview, WT32_LCD_WIDTH, CONTENT_HEIGHT);
     lv_obj_set_scrollbar_mode(s_ui.tileview, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_scroll_snap_x(s_ui.tileview, LV_SCROLL_SNAP_CENTER);
@@ -1209,14 +1200,12 @@ esp_err_t dashboard_ui_create(void)
     create_nas_page(s_ui.pages[4]);
     create_quota_page(s_ui.pages[5]);
     create_home_page(s_ui.pages[6]);
-    create_gallery_page(s_ui.pages[7]);
-    create_alert_page(s_ui.pages[8]);
-    create_settings_page(s_ui.pages[9]);
+    create_settings_page(s_ui.pages[7]);
     create_navigation();
     lv_obj_set_tile_id(s_ui.tileview, 0, 0, LV_ANIM_OFF);
     update_navigation();
 
-    ESP_LOGI(TAG, "Created %d LVGL pages; music replaced by alert center", PAGE_COUNT);
+    ESP_LOGI(TAG, "Created %d LVGL pages with top tabs", PAGE_COUNT);
     return ESP_OK;
 }
 

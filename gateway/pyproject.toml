@@ -9,6 +9,7 @@ description = "Mock-first FastAPI gateway for the WT32-SC01 dashboard"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1",
+  "httpx>=0.27,<1",
   "pydantic>=2.9,<3",
   "tzdata>=2026.3,<2027",
   "uvicorn>=0.30,<1",
