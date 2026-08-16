@@ -7,8 +7,8 @@
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/healthz` | 存活状态与运行时间 |
-| GET | `/v1/bootstrap` | 设备配置、页面顺序、能力声明 |
-| GET | `/v1/snapshot` | 11 个页面的一次性数据快照 |
+| GET | `/v1/bootstrap` | 设备配置、8 个页面的顺序、能力声明 |
+| GET | `/v1/snapshot` | 10 个数据分区的一次性快照（含保留的 `clock` 和通知数据） |
 | POST | `/v1/home/commands` | 执行白名单内的 Mock 智能家居命令 |
 | POST | `/v1/mock/tick` | 推进 Mock revision 并制造轻微数据变化 |
 
@@ -27,7 +27,7 @@
 
 `status` 只会是 `fresh`、`stale`、`error`、`unsupported`。`snapshot` 中每个数据源另有独立状态、更新时间和过期阈值，因此未来真实连接器可以局部失败。
 
-Antigravity 数据源明确返回 `unsupported`，因为尚未配置受支持的机器可读额度 API。相册目前只返回 SMB Mock 元数据，缩略图 URL 是占位符。
+Antigravity 数据源明确返回 `unsupported`，因为尚未配置受支持的机器可读额度 API。股票和油价未配置 provider 时明确返回 `unsupported`，不会生成假数值。
 
 ## 本地运行
 
