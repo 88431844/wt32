@@ -88,17 +88,34 @@ static bool form_value(const char *body, const char *key, char *out, size_t size
 
 static esp_err_t portal_root(httpd_req_t *req)
 {
-    static const char page[] =
-        "<!doctype html><meta charset=utf-8><title>InfoDisplay 配置</title>"
-        "<style>body{font-family:sans-serif;max-width:520px;margin:2em auto;padding:0 1em}"
-        "input{width:100%;padding:.6em;margin:.3em 0 1em}button{padding:.7em 1.5em}</style>"
-        "<h2>InfoDisplay 网络配置</h2><form method=post action=/save>"
-        "Wi-Fi 名称<input name=ssid required>Wi-Fi 密码<input name=password type=password>"
+    static const char head[] =
+        "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+        "<title>InfoDisplay 配置</title><style>body{font-family:sans-serif;max-width:520px;margin:2em auto;padding:0 1em}"
+        "input,select{width:100%;box-sizing:border-box;padding:.65em;margin:.3em 0 1em}button{padding:.7em 1.5em}"
+        ".hint{color:#666;font-size:.9em}</style><h2>InfoDisplay 网络配置</h2>"
+        "<form method=post action=/save><label>选择 Wi-Fi</label><select name=ssid>";
+    httpd_resp_set_type(req, "text/html; charset=utf-8");
+    httpd_resp_sendstr_chunk(req, head);
+
+    wifi_ap_record_t records[20] = {0};
+    uint16_t count = 20;
+    if (esp_wifi_scan_start(NULL, true) == ESP_OK && esp_wifi_scan_get_ap_records(&count, records) == ESP_OK) {
+        for (uint16_t i = 0; i < count; ++i) {
+            if (records[i].ssid[0] == '\0') continue;
+            char option[96];
+            snprintf(option, sizeof(option), "<option value=\"%s\">%s (%d dBm)</option>",
+                     records[i].ssid, records[i].ssid, records[i].rssi);
+            httpd_resp_sendstr_chunk(req, option);
+        }
+    }
+    static const char tail[] =
+        "</select><div class=hint>如果列表中没有目标网络，也可以手动填写 SSID。</div>"
+        "<input name=ssid_manual placeholder='手动输入 SSID'>Wi-Fi 密码<input name=password type=password>"
         "天气地区<input name=city value='深圳'>油价地区<input name=fuel_region value='深圳'>"
         "股票代码<input name=stock_symbol value='002594.SZ'>Gateway 地址<input name=gateway_url>"
         "<button>保存并重启连接</button></form>";
-    httpd_resp_set_type(req, "text/html; charset=utf-8");
-    return httpd_resp_send(req, page, HTTPD_RESP_USE_STRLEN);
+    httpd_resp_sendstr_chunk(req, tail);
+    return httpd_resp_sendstr_chunk(req, NULL);
 }
 
 static esp_err_t portal_save(httpd_req_t *req)
@@ -107,12 +124,17 @@ static esp_err_t portal_save(httpd_req_t *req)
     int received = httpd_req_recv(req, body, sizeof(body) - 1);
     if (received <= 0) return ESP_FAIL;
     body[received] = '\0';
-    const char *keys[] = {"ssid", "password", "city", "fuel_region", "stock_symbol", "gateway_url"};
+    const char *keys[] = {"ssid_manual", "password", "city", "fuel_region", "stock_symbol", "gateway_url"};
     char value[MAX_FORM_VALUE];
     for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); ++i) {
         if (form_value(body, keys[i], value, sizeof(value))) {
             save_setting(keys[i], value);
         }
+    }
+    if (!form_value(body, "ssid_manual", value, sizeof(value)) || value[0] == '\0') {
+        if (form_value(body, "ssid", value, sizeof(value))) save_setting("ssid", value);
+    } else {
+        save_setting("ssid", value);
     }
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     return httpd_resp_sendstr(req, "<meta charset=utf-8><h3>已保存，设备正在连接 Wi-Fi。</h3>");
@@ -137,6 +159,7 @@ static void start_portal(void)
     s_setup_ap = true;
     httpd_config_t http_config = HTTPD_DEFAULT_CONFIG();
     http_config.server_port = 80;
+    http_config.stack_size = 8192;
     httpd_uri_t root = {.uri = "/", .method = HTTP_GET, .handler = portal_root};
     httpd_uri_t save = {.uri = "/save", .method = HTTP_POST, .handler = portal_save};
     if (httpd_start(&s_http, &http_config) == ESP_OK) {
