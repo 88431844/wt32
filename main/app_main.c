@@ -16,6 +16,7 @@
 #include "freertos/task.h"
 #include "lvgl.h"
 #include "nvs_flash.h"
+#include "network_manager.h"
 
 static const char *TAG = "wt32_dashboard";
 static lv_disp_drv_t s_display_driver;
@@ -155,6 +156,7 @@ void app_main(void)
 {
     ESP_ERROR_CHECK(init_nvs());
     ESP_ERROR_CHECK(wt32_board_init());
+    ESP_ERROR_CHECK(network_manager_start());
 
     QueueHandle_t snapshot_queue = app_model_start_mock_provider();
     ESP_ERROR_CHECK(snapshot_queue != NULL ? ESP_OK : ESP_ERR_NO_MEM);

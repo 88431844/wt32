@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <string.h>
+#include <time.h>
 
 #include "esp_log.h"
 #include "freertos/task.h"
@@ -33,17 +34,14 @@ static void mock_provider_task(void *argument)
 
     ESP_LOGI(TAG, "Local Mock provider started");
     while (true) {
+        time_t now = time(NULL);
+        struct tm local_now;
+        localtime_r(&now, &local_now);
         snapshot.revision++;
         snapshot.uptime_seconds++;
-        snapshot.second++;
-        if (snapshot.second >= 60) {
-            snapshot.second = 0;
-            snapshot.minute++;
-        }
-        if (snapshot.minute >= 60) {
-            snapshot.minute = 0;
-            snapshot.hour = (snapshot.hour + 1) % 24;
-        }
+        snapshot.hour = (uint8_t)local_now.tm_hour;
+        snapshot.minute = (uint8_t)local_now.tm_min;
+        snapshot.second = (uint8_t)local_now.tm_sec;
 
         const int wave = (int)(snapshot.uptime_seconds % 11) - 5;
         snapshot.byd_price = 108.62f + wave * 0.07f;
