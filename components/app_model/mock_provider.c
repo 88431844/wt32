@@ -6,6 +6,7 @@
 
 #include "esp_log.h"
 #include "freertos/task.h"
+#include "network_manager.h"
 
 static const char *TAG = "mock_provider";
 static QueueHandle_t s_snapshot_queue;
@@ -42,6 +43,8 @@ static void mock_provider_task(void *argument)
         snapshot.hour = (uint8_t)local_now.tm_hour;
         snapshot.minute = (uint8_t)local_now.tm_min;
         snapshot.second = (uint8_t)local_now.tm_sec;
+        snapshot.wifi_connected = network_manager_is_connected();
+        network_manager_get_ip(snapshot.ip_address, sizeof(snapshot.ip_address));
 
         const int wave = (int)(snapshot.uptime_seconds % 11) - 5;
         snapshot.byd_price = 108.62f + wave * 0.07f;

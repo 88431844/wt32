@@ -41,6 +41,7 @@ typedef struct {
     lv_obj_t *root;
     lv_obj_t *status_bar;
     lv_obj_t *status_title;
+    lv_obj_t *status_ip;
     lv_obj_t *status_time;
     lv_obj_t *tileview;
     lv_obj_t *page_bar;
@@ -1173,7 +1174,9 @@ esp_err_t dashboard_ui_create(void)
                       &lv_font_montserrat_14, COLOR_GREEN);
     s_ui.status_title = make_label(s_ui.status_bar, "资讯", 32, 5, 150,
                                    &app_font_14, false);
-    s_ui.status_time = make_label(s_ui.status_bar, "22:18", 354, 5, 70,
+    s_ui.status_ip = make_label(s_ui.status_bar, "WiFi...", 184, 5, 155,
+                                &lv_font_montserrat_14, true);
+    s_ui.status_time = make_label(s_ui.status_bar, "22:18", 350, 5, 76,
                                   &lv_font_montserrat_14, true);
     lv_obj_set_style_text_align(s_ui.status_time, LV_TEXT_ALIGN_RIGHT, 0);
     make_accent_label(s_ui.status_bar, "MOCK", 428, 5, 45,
@@ -1229,6 +1232,10 @@ void dashboard_ui_update(const app_snapshot_t *snapshot)
                               snapshot->hour, snapshot->minute);
         lv_label_set_text_fmt(s_ui.weather_time, "%02u:%02u",
                               snapshot->hour, snapshot->minute);
+    }
+    if (first || snapshot->wifi_connected != previous->wifi_connected ||
+        strcmp(snapshot->ip_address, previous->ip_address) != 0) {
+        lv_label_set_text(s_ui.status_ip, snapshot->ip_address[0] ? snapshot->ip_address : "WiFi...");
     }
     if (first || snapshot->byd_price != previous->byd_price) {
         lv_label_set_text_fmt(s_ui.market_price, "%.2f", snapshot->byd_price);

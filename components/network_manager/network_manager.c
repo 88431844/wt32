@@ -25,6 +25,7 @@ static const char *TAG = "network_manager";
 static EventGroupHandle_t s_events;
 static bool s_setup_ap;
 static httpd_handle_t s_http;
+static char s_ip[16];
 
 static void load_setting(const char *key, char *out, size_t size)
 {
@@ -177,6 +178,8 @@ static void event_handler(void *arg, esp_event_base_t base, int32_t id, void *da
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
         xEventGroupClearBits(s_events, WIFI_CONNECTED_BIT);
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
+        snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&event->ip_info.ip));
         xEventGroupSetBits(s_events, WIFI_CONNECTED_BIT);
         s_setup_ap = false;
         sntp_setoperatingmode(SNTP_OPMODE_POLL);
@@ -235,4 +238,16 @@ bool network_manager_is_connected(void)
 bool network_manager_is_setup_ap(void)
 {
     return s_setup_ap;
+}
+
+void network_manager_get_ip(char *out, size_t size)
+{
+    if (out == NULL || size == 0) return;
+    if (s_setup_ap) {
+        snprintf(out, size, "192.168.4.1");
+    } else if (network_manager_is_connected() && s_ip[0] != '\0') {
+        snprintf(out, size, "%s", s_ip);
+    } else {
+        snprintf(out, size, "WiFi...");
+    }
 }

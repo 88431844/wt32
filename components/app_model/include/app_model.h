@@ -16,6 +16,8 @@ typedef struct {
     uint8_t hour;
     uint8_t minute;
     uint8_t second;
+    bool wifi_connected;
+    char ip_address[16];
     float byd_price;
     float byd_change_percent;
     int weather_temperature;
