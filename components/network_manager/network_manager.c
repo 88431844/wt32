@@ -181,6 +181,18 @@ static void event_handler(void *arg, esp_event_base_t base, int32_t id, void *da
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
         snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&event->ip_info.ip));
         xEventGroupSetBits(s_events, WIFI_CONNECTED_BIT);
+        if (s_http != NULL) {
+            httpd_stop(s_http);
+            s_http = NULL;
+        }
+        if (s_setup_ap) {
+            esp_err_t mode_err = esp_wifi_set_mode(WIFI_MODE_STA);
+            if (mode_err != ESP_OK) {
+                ESP_LOGW(TAG, "Unable to stop setup AP: %s", esp_err_to_name(mode_err));
+            } else {
+                ESP_LOGI(TAG, "Setup AP closed after STA acquired IP");
+            }
+        }
         s_setup_ap = false;
         sntp_setoperatingmode(SNTP_OPMODE_POLL);
         sntp_setservername(0, "pool.ntp.org");
