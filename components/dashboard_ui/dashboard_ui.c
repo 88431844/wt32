@@ -16,6 +16,7 @@
 
 LV_FONT_DECLARE(app_font_14);
 LV_FONT_DECLARE(app_font_18);
+LV_FONT_DECLARE(app_font_11);
 
 #define PAGE_COUNT 3
 #define VM_VISIBLE 5
@@ -25,6 +26,13 @@ LV_FONT_DECLARE(app_font_18);
 #define NAS_METRICS_HEIGHT 42
 #define NAS_METRIC_CELL_WIDTH 68
 #define NAS_METRIC_DYNAMIC_COUNT 4
+#define NAS_FOOTER_IP_WIDTH 112
+#define NAS_FOOTER_UPTIME_WIDTH 48
+#define NAS_FOOTER_STATIC_Y 13
+#define NAS_POOL_ROW_WIDTH_PAGED 420
+#define NAS_POOL_ROW_WIDTH_FULL 464
+#define NAS_POOL_BAR_WIDTH_PAGED 402
+#define NAS_POOL_BAR_WIDTH_FULL 446
 #define TOAST_DURATION_MS 2500
 #define THEME_COUNT 5
 #define REFRESH_OPTION_COUNT 4
@@ -173,7 +181,6 @@ typedef struct {
     lv_obj_t *nas_cpu_value;
     lv_obj_t *nas_memory_value;
     lv_obj_t *nas_temperature_value;
-    lv_obj_t *nas_network_prefix;
     lv_obj_t *nas_upload_value;
     lv_obj_t *nas_download_value;
     lv_obj_t *nas_ip_value;
@@ -299,6 +306,29 @@ static lv_obj_t *make_icon(lv_obj_t *parent, const lv_img_dsc_t *source,
     return image;
 }
 
+static lv_obj_t *make_brand_icon(lv_obj_t *parent, const lv_img_dsc_t *source,
+                                 int x, int y)
+{
+    lv_obj_t *image = lv_img_create(parent);
+    lv_img_set_src(image, source);
+    lv_obj_set_pos(image, x, y);
+    lv_obj_set_style_img_recolor_opa(image, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(image, LV_OBJ_FLAG_CLICKABLE);
+    return image;
+}
+
+static lv_obj_t *make_rule(lv_obj_t *parent, int x, int y, int width, int height)
+{
+    lv_obj_t *rule = lv_obj_create(parent);
+    lv_obj_remove_style_all(rule);
+    lv_obj_set_pos(rule, x, y);
+    lv_obj_set_size(rule, width, height);
+    lv_obj_set_style_bg_opa(rule, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(rule, color(COLOR_LINE), 0);
+    lv_obj_clear_flag(rule, LV_OBJ_FLAG_CLICKABLE);
+    return rule;
+}
+
 static lv_obj_t *make_button(lv_obj_t *parent, const char *text, int x, int y, int width,
                              int height, lv_event_cb_t callback, void *user_data)
 {
@@ -315,7 +345,7 @@ static lv_obj_t *make_button(lv_obj_t *parent, const char *text, int x, int y, i
 }
 
 static lv_obj_t *make_icon_button(lv_obj_t *parent, const char *text,
-                                  const lv_img_dsc_t *icon, uint32_t icon_color,
+                                  const lv_img_dsc_t *icon,
                                   int x, int y, int width, int height,
                                   lv_event_cb_t callback, void *user_data)
 {
@@ -323,7 +353,7 @@ static lv_obj_t *make_icon_button(lv_obj_t *parent, const char *text,
     lv_obj_t *label = lv_obj_get_child(button, 0);
     lv_obj_set_x(label, 10);
     lv_obj_set_width(label, width - 24);
-    make_icon(button, icon, 6, (height - 16) / 2, icon_color);
+    make_brand_icon(button, icon, 6, (height - 16) / 2);
     return button;
 }
 
@@ -386,9 +416,11 @@ static void format_uptime(char *out, size_t size, uint32_t seconds)
     if (days > 999)
         snprintf(out, size, "%.1f年", (double)days / 365.0);
     else if (days > 0)
-        snprintf(out, size, "%" PRIu32 "天%" PRIu32 "时", days, hours);
+        snprintf(out, size, "%" PRIu32 "天", days);
+    else if (hours > 0)
+        snprintf(out, size, "%" PRIu32 "时", hours);
     else
-        snprintf(out, size, "%" PRIu32 "时%" PRIu32 "分", hours, minutes);
+        snprintf(out, size, "%" PRIu32 "分", minutes);
 }
 
 static void format_percent(char *out, size_t size, float value)
@@ -843,7 +875,7 @@ static void create_nas_page(lv_obj_t *page)
         lv_obj_remove_style_all(s_ui.nas_rows[i]);
         lv_obj_add_style(s_ui.nas_rows[i], &s_muted_button_style, 0);
         lv_obj_set_pos(s_ui.nas_rows[i], 8, 4 + i * 59);
-        lv_obj_set_size(s_ui.nas_rows[i], 420, 56);
+        lv_obj_set_size(s_ui.nas_rows[i], NAS_POOL_ROW_WIDTH_PAGED, 56);
         lv_obj_add_event_cb(s_ui.nas_rows[i], nas_pool_list_event, LV_EVENT_CLICKED,
                             (void *)(uintptr_t)i);
         s_ui.nas_row_status_dots[i] = make_status_dot(s_ui.nas_rows[i], 9, 8, 8,
@@ -856,7 +888,8 @@ static void create_nas_page(lv_obj_t *page)
         s_ui.nas_row_values[i] = make_label(s_ui.nas_rows[i], "", 198, 3, 212,
                                              &app_font_14, COLOR_TEXT);
         lv_obj_set_style_text_align(s_ui.nas_row_values[i], LV_TEXT_ALIGN_RIGHT, 0);
-        s_ui.nas_row_bars[i] = make_split_bar(s_ui.nas_rows[i], 9, 34, 402, 6, 0, 100);
+        s_ui.nas_row_bars[i] = make_split_bar(s_ui.nas_rows[i], 9, 34,
+                                              NAS_POOL_BAR_WIDTH_PAGED, 6, 0, 100);
         lv_obj_clear_flag(s_ui.nas_row_status_dots[i], LV_OBJ_FLAG_CLICKABLE);
         lv_obj_clear_flag(s_ui.nas_row_bars[i], LV_OBJ_FLAG_CLICKABLE);
         set_hidden(s_ui.nas_rows[i], true);
@@ -917,13 +950,21 @@ static void create_nas_page(lv_obj_t *page)
     set_hidden(s_ui.nas_detail, true);
 
     lv_obj_t *footer = make_surface(page, 8, 246, 464, NAS_METRICS_HEIGHT);
-    make_icon(footer, &dashboard_icon_ip, 6, 3, palette()->muted);
-    s_ui.nas_ip_value = make_label(footer, "--", 24, 2, 154,
-                                   &app_font_14, COLOR_TEXT);
-    make_icon(footer, &dashboard_icon_uptime, 6, 22, palette()->muted);
-    s_ui.nas_uptime_value = make_label(footer, "--", 24, 21, 154,
-                                       &app_font_14, COLOR_TEXT);
-    const int dynamic_x = 184;
+    const int ip_x = 8;
+    const int uptime_x = ip_x + NAS_FOOTER_IP_WIDTH + 2;
+    const int divider_x = uptime_x + NAS_FOOTER_UPTIME_WIDTH + 2;
+    const int dynamic_x = divider_x + 3;
+    make_icon(footer, &dashboard_icon_globe, ip_x, NAS_FOOTER_STATIC_Y,
+              palette()->muted);
+    s_ui.nas_ip_value = make_label(footer, "--", ip_x + 19, NAS_FOOTER_STATIC_Y,
+                                   NAS_FOOTER_IP_WIDTH - 21, &app_font_11, COLOR_TEXT);
+    make_icon(footer, &dashboard_icon_uptime, uptime_x, NAS_FOOTER_STATIC_Y,
+              palette()->muted);
+    s_ui.nas_uptime_value = make_label(footer, "--", uptime_x + 18,
+                                       NAS_FOOTER_STATIC_Y,
+                                       NAS_FOOTER_UPTIME_WIDTH - 18,
+                                       &app_font_11, COLOR_TEXT);
+    make_rule(footer, divider_x, 6, 1, 30);
     make_icon(footer, &dashboard_icon_processor, dynamic_x + 4, 13, palette()->muted);
     s_ui.nas_cpu_value = make_label(footer, "--", dynamic_x + 22, 12, 42,
                                     &app_font_14, COLOR_TEXT);
@@ -932,32 +973,44 @@ static void create_nas_page(lv_obj_t *page)
     s_ui.nas_memory_value = make_label(footer, "--",
                                        dynamic_x + NAS_METRIC_CELL_WIDTH + 22, 12, 42,
                                        &app_font_14, COLOR_TEXT);
+    make_rule(footer, dynamic_x + NAS_METRIC_CELL_WIDTH, 6, 1, 30);
     make_icon(footer, &dashboard_icon_temperature,
               dynamic_x + NAS_METRIC_CELL_WIDTH * 2 + 4, 13, palette()->muted);
     s_ui.nas_temperature_value = make_label(footer, "--",
                                             dynamic_x + NAS_METRIC_CELL_WIDTH * 2 + 22,
                                             12, 42, &app_font_14, COLOR_TEXT);
-    s_ui.nas_network_prefix = make_label(footer, "", dynamic_x + NAS_METRIC_CELL_WIDTH * 3,
-                                         0, 1, &app_font_14, COLOR_TEXT);
+    make_rule(footer, dynamic_x + NAS_METRIC_CELL_WIDTH * 2, 6, 1, 30);
+    make_rule(footer, dynamic_x + NAS_METRIC_CELL_WIDTH * 3, 6, 1, 30);
     make_icon(footer, &dashboard_icon_upload,
-              dynamic_x + NAS_METRIC_CELL_WIDTH * 3 + 1, 2, palette()->muted);
+              dynamic_x + NAS_METRIC_CELL_WIDTH * 3 + 4, 4, palette()->muted);
     s_ui.nas_upload_value = make_label(footer, "--",
                                        dynamic_x + NAS_METRIC_CELL_WIDTH * 3 + 18,
-                                       1, 48, &app_font_14, COLOR_TEXT);
+                                       3, 48, &app_font_11, COLOR_TEXT);
     make_icon(footer, &dashboard_icon_download,
-              dynamic_x + NAS_METRIC_CELL_WIDTH * 3 + 1, 22, palette()->muted);
+              dynamic_x + NAS_METRIC_CELL_WIDTH * 3 + 4, 24, palette()->muted);
     s_ui.nas_download_value = make_label(footer, "--",
                                          dynamic_x + NAS_METRIC_CELL_WIDTH * 3 + 18,
-                                         21, 48, &app_font_14, COLOR_TEXT);
+                                         23, 48, &app_font_11, COLOR_TEXT);
     lv_obj_set_style_text_align(s_ui.nas_cpu_value, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_style_text_align(s_ui.nas_memory_value, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_style_text_align(s_ui.nas_temperature_value, LV_TEXT_ALIGN_LEFT, 0);
-    lv_obj_set_style_text_align(s_ui.nas_network_prefix, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_style_text_align(s_ui.nas_upload_value, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_style_text_align(s_ui.nas_download_value, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_style_text_align(s_ui.nas_ip_value, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_style_text_align(s_ui.nas_uptime_value, LV_TEXT_ALIGN_LEFT, 0);
     show_nas_pools();
+}
+
+static void set_nas_pool_pager_layout(bool paged)
+{
+    const int row_width = paged ? NAS_POOL_ROW_WIDTH_PAGED : NAS_POOL_ROW_WIDTH_FULL;
+    const int bar_width = paged ? NAS_POOL_BAR_WIDTH_PAGED : NAS_POOL_BAR_WIDTH_FULL;
+    const int value_width = row_width - 208;
+    for (int i = 0; i < NAS_VISIBLE; ++i) {
+        lv_obj_set_width(s_ui.nas_rows[i], row_width);
+        lv_obj_set_width(s_ui.nas_row_bars[i], bar_width);
+        lv_obj_set_width(s_ui.nas_row_values[i], value_width);
+    }
 }
 
 static void set_rotation_button_state(void)
@@ -1283,10 +1336,10 @@ static void create_settings_page(lv_obj_t *page)
     lv_obj_t *monitor = make_surface(page, 8, 176, 464, 108);
     make_label(monitor, "主页", 10, 8, 42, &app_font_14, COLOR_MUTED);
     s_ui.homepage_buttons[0] = make_icon_button(
-        monitor, "NAS", &dashboard_icon_dsm, 0x1488CC, 58, 3, 82, 30,
+        monitor, "NAS", &dashboard_icon_dsm, 58, 3, 82, 30,
         homepage_event, (void *)(uintptr_t)0);
     s_ui.homepage_buttons[1] = make_icon_button(
-        monitor, "PVE", &dashboard_icon_proxmox, 0xE57000, 146, 3, 82, 30,
+        monitor, "PVE", &dashboard_icon_proxmox, 146, 3, 82, 30,
         homepage_event, (void *)(uintptr_t)1);
     set_homepage_button_state();
     make_label(monitor, "刷新", 10, 43, 42, &app_font_14, COLOR_MUTED);
@@ -1312,14 +1365,14 @@ static void create_top_bar(void)
     lv_obj_set_size(bar, WT32_LCD_WIDTH, 32);
     lv_obj_set_style_bg_color(bar, color(COLOR_SURFACE), 0);
     lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
-    s_ui.nas_nav_button = make_icon_button(bar, "NAS", &dashboard_icon_dsm, 0x1488CC,
+    s_ui.nas_nav_button = make_icon_button(bar, "NAS", &dashboard_icon_dsm,
                                            4, 3, 76, 26, page_event,
                                            (void *)(intptr_t)0);
     s_ui.time_label = make_label(bar, "--:--", 84, 7, 52, &app_font_14, COLOR_TEXT);
     lv_obj_set_style_text_align(s_ui.time_label, LV_TEXT_ALIGN_CENTER, 0);
     s_ui.ip_label = make_label(bar, "WiFi未连接", 140, 7, 166, &app_font_14, COLOR_MUTED);
     lv_obj_set_style_text_align(s_ui.ip_label, LV_TEXT_ALIGN_CENTER, 0);
-    s_ui.pve_nav_button = make_icon_button(bar, "PVE", &dashboard_icon_proxmox, 0xE57000,
+    s_ui.pve_nav_button = make_icon_button(bar, "PVE", &dashboard_icon_proxmox,
                                            310, 3, 76, 26, page_event,
                                            (void *)(intptr_t)1);
     s_ui.settings_nav_button = make_button(bar, "设置", 390, 3, 86, 26,
@@ -1480,12 +1533,14 @@ static void update_nas(void)
     if (s_ui.nas_pool_offset > pool_last_offset) s_ui.nas_pool_offset = pool_last_offset;
     const size_t pool_page_count = has_pools ?
         (snapshot->nas_pool_count + NAS_VISIBLE - 1) / NAS_VISIBLE : 1;
+    const bool pool_paged = snapshot->nas_pool_count > NAS_VISIBLE;
+    set_nas_pool_pager_layout(pool_paged);
     lv_label_set_text_fmt(s_ui.nas_pool_page, "%zu/%zu",
                           s_ui.nas_pool_offset / NAS_VISIBLE + 1, pool_page_count);
-    set_hidden(s_ui.nas_pool_page, snapshot->nas_pool_count <= NAS_VISIBLE);
-    set_hidden(s_ui.nas_pool_previous, s_ui.nas_pool_offset == 0);
+    set_hidden(s_ui.nas_pool_page, !pool_paged);
+    set_hidden(s_ui.nas_pool_previous, !pool_paged || s_ui.nas_pool_offset == 0);
     set_hidden(s_ui.nas_pool_next,
-               s_ui.nas_pool_offset + NAS_VISIBLE >= snapshot->nas_pool_count);
+               !pool_paged || s_ui.nas_pool_offset + NAS_VISIBLE >= snapshot->nas_pool_count);
     for (int i = 0; i < NAS_VISIBLE; ++i) {
         const size_t index = s_ui.nas_pool_offset + (size_t)i;
         const bool visible = index < snapshot->nas_pool_count;

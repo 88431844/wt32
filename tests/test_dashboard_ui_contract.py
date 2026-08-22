@@ -37,10 +37,33 @@ class DashboardUiContractTest(unittest.TestCase):
         self.assertIn("#define NAS_METRICS_HEIGHT 42", UI)
         self.assertIn("NAS_METRIC_CELL_WIDTH 68", UI)
         self.assertIn("NAS_METRIC_DYNAMIC_COUNT 4", UI)
+        self.assertIn("NAS_FOOTER_IP_WIDTH 112", UI)
+        self.assertIn("NAS_FOOTER_UPTIME_WIDTH 48", UI)
+        self.assertIn("NAS_FOOTER_STATIC_Y 13", UI)
+        self.assertIn("&dashboard_icon_globe", UI)
+        self.assertNotIn("&dashboard_icon_ip", UI)
         for unit in ('"B"', '"K"', '"M"', '"G"', '"T"'):
             self.assertIn(unit, UI)
         self.assertNotIn('"CPU %s"', UI)
         self.assertNotIn('"IP %s"', UI)
+
+    def test_nas_pool_rows_fill_hidden_pager_column(self):
+        for marker in ("NAS_POOL_ROW_WIDTH_PAGED 420", "NAS_POOL_ROW_WIDTH_FULL 464",
+                       "NAS_POOL_BAR_WIDTH_PAGED 402", "NAS_POOL_BAR_WIDTH_FULL 446",
+                       "set_nas_pool_pager_layout",
+                       "snapshot->nas_pool_count > NAS_VISIBLE"):
+            self.assertIn(marker, UI)
+
+    def test_brand_icons_keep_official_colors(self):
+        icons = ICONS_SOURCE.read_text(encoding="utf-8")
+        self.assertIn("COLOR_ICON_DESCRIPTOR(dashboard_icon_dsm", icons)
+        self.assertIn("COLOR_ICON_DESCRIPTOR(dashboard_icon_proxmox", icons)
+        self.assertIn("LV_IMG_CF_TRUE_COLOR_ALPHA", icons)
+        self.assertIn("make_brand_icon", UI)
+        icon_button = UI[UI.index("static lv_obj_t *make_icon_button"):]
+        icon_button = icon_button[:icon_button.index("static void", 20)]
+        self.assertIn("make_brand_icon(button, icon", icon_button)
+        self.assertNotIn("make_icon(button, icon", icon_button)
 
     def test_offline_icon_assets_cover_brand_hardware_and_status(self):
         self.assertTrue(ICONS_HEADER.exists())
@@ -48,7 +71,7 @@ class DashboardUiContractTest(unittest.TestCase):
         icons = ICONS_HEADER.read_text(encoding="utf-8")
         for name in ("dashboard_icon_dsm", "dashboard_icon_proxmox", "dashboard_icon_processor",
                      "dashboard_icon_memory", "dashboard_icon_temperature", "dashboard_icon_hdd",
-                     "dashboard_icon_pool", "dashboard_icon_ip", "dashboard_icon_uptime",
+                     "dashboard_icon_pool", "dashboard_icon_globe", "dashboard_icon_uptime",
                      "dashboard_icon_upload", "dashboard_icon_download"):
             self.assertIn(name, icons)
 

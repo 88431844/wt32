@@ -1,67 +1,114 @@
 #include "dashboard_icons.h"
 
-/* Brand masks are reduced from the official Synology DSM and Proxmox product
- * marks for 16 px use. They are embedded locally and do not use Iconfont uploads. */
-
-#define ICON_DESCRIPTOR(name, pixels) \
+/* Brand marks keep their own colors. Other icons are alpha masks so the
+ * active dashboard theme can recolor them consistently. */
+#define MASK_ICON_DESCRIPTOR(name, pixels, width, height) \
     const lv_img_dsc_t name = { \
-        .header.always_zero = 0, .header.w = 16, .header.h = 16, \
+        .header.always_zero = 0, .header.w = width, .header.h = height, \
         .data_size = sizeof(pixels), .header.cf = LV_IMG_CF_ALPHA_1BIT, .data = pixels, \
     }
 
+#define COLOR_ICON_DESCRIPTOR(name, pixels) \
+    const lv_img_dsc_t name = { \
+        .header.always_zero = 0, .header.w = 16, .header.h = 16, \
+        .data_size = sizeof(pixels), .header.cf = LV_IMG_CF_TRUE_COLOR_ALPHA, .data = pixels, \
+    }
+
+/* RGB565 byte-swapped pixels for the target's LV_COLOR_DEPTH=16 and
+ * LV_COLOR_16_SWAP=1 configuration. */
+#define PX_CLEAR 0x00, 0x00, 0x00
+#define PX_DSM_BLUE 0x14, 0x59, 0xff
+#define PX_PROXMOX_ORANGE 0xe3, 0x80, 0xff
+#define PX_WHITE 0xff, 0xff, 0xff
+
 static const uint8_t dsm_pixels[] = {
-    0x3c,0,0x7e,0,0xe7,0,0xc3,0,0xdb,0,0xdb,0,0xc3,0,0xe7,0,
-    0x7e,0,0x3c,0,0x18,0,0x18,0,0x3c,0,0x7e,0,0x3c,0,0,0,
-};
-static const uint8_t proxmox_pixels[] = {
-    0xc3,0xc3,0x66,0x66,0x3c,0x3c,0x18,0x18,0x3c,0x3c,0x66,0x66,0xc3,0xc3,0x81,0x81,
-    0x81,0x81,0xc3,0xc3,0x66,0x66,0x3c,0x3c,0x18,0x18,0x3c,0x3c,0x66,0x66,0xc3,0xc3,
-};
-static const uint8_t processor_pixels[] = {
-    0x24,0,0x7e,0,0xff,0,0xc3,0,0xdb,0,0xdb,0,0xc3,0,0xff,0,
-    0xff,0,0xc3,0,0xdb,0,0xdb,0,0xc3,0,0xff,0,0x7e,0,0x24,0,
-};
-static const uint8_t memory_pixels[] = {
-    0,0,0,0,0xff,0xfc,0x80,0x04,0xb6,0xd4,0xb6,0xd4,0x80,0x04,0xff,0xfc,
-    0x24,0x90,0x24,0x90,0,0,0,0,0,0,0,0,0,0,0,
-};
-static const uint8_t temperature_pixels[] = {
-    0x18,0,0x24,0,0x24,0,0x24,0,0x2c,0,0x2c,0,0x2c,0,0x2c,0,
-    0x6e,0,0xdf,0,0xdf,0,0x7e,0,0x3c,0,0,0,0,0,0,0,
-};
-static const uint8_t hdd_pixels[] = {
-    0x7e,0,0xff,0,0xc3,0,0xdb,0,0xdb,0,0xc3,0,0xff,0,0x81,0,
-    0xbd,0,0xa5,0,0xbd,0,0x81,0,0xff,0,0,0,0,0,0,0,
-};
-static const uint8_t pool_pixels[] = {
-    0x3c,0,0x7e,0,0xc3,0,0xc3,0,0x7e,0,0x3c,0,0x7e,0,0xc3,0,
-    0xc3,0,0x7e,0,0x3c,0,0x7e,0,0xc3,0,0xc3,0,0x7e,0,0x3c,0,
-};
-static const uint8_t ip_pixels[] = {
-    0x18,0,0x3c,0,0x7e,0,0xe7,0,0xc3,0,0xc3,0,0x66,0,0x3c,0,
-    0x18,0,0x18,0,0x18,0,0x18,0,0,0,0,0,0,0,0,
-};
-static const uint8_t uptime_pixels[] = {
-    0x18,0,0x7e,0,0xc3,0,0x99,0,0x99,0,0x8d,0,0x87,0,0xc3,0,
-    0x66,0,0x3c,0,0,0,0,0,0,0,0,0,0,0,0,
-};
-static const uint8_t upload_pixels[] = {
-    0x18,0,0x3c,0,0x7e,0,0xdb,0,0x18,0,0x18,0,0x18,0,0x18,0,
-    0x18,0,0,0,0,0,0,0,0,0,0,0,0,0,
-};
-static const uint8_t download_pixels[] = {
-    0x18,0,0x18,0,0x18,0,0x18,0,0x18,0,0xdb,0,0x7e,0,0x3c,0,
-    0x18,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_CLEAR, PX_CLEAR, PX_CLEAR,
+    PX_CLEAR, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_CLEAR,
+    PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE,
+    PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE,
+    PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE,
+    PX_DSM_BLUE, PX_WHITE, PX_WHITE, PX_DSM_BLUE, PX_DSM_BLUE, PX_WHITE, PX_WHITE, PX_WHITE, PX_DSM_BLUE, PX_WHITE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_WHITE, PX_DSM_BLUE, PX_DSM_BLUE,
+    PX_DSM_BLUE, PX_WHITE, PX_DSM_BLUE, PX_WHITE, PX_DSM_BLUE, PX_WHITE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_WHITE, PX_WHITE, PX_DSM_BLUE, PX_WHITE, PX_WHITE, PX_DSM_BLUE, PX_DSM_BLUE,
+    PX_DSM_BLUE, PX_WHITE, PX_DSM_BLUE, PX_WHITE, PX_DSM_BLUE, PX_WHITE, PX_WHITE, PX_WHITE, PX_DSM_BLUE, PX_WHITE, PX_DSM_BLUE, PX_WHITE, PX_DSM_BLUE, PX_WHITE, PX_DSM_BLUE, PX_DSM_BLUE,
+    PX_DSM_BLUE, PX_WHITE, PX_DSM_BLUE, PX_WHITE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_WHITE, PX_DSM_BLUE, PX_WHITE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_WHITE, PX_DSM_BLUE, PX_DSM_BLUE,
+    PX_DSM_BLUE, PX_WHITE, PX_WHITE, PX_DSM_BLUE, PX_DSM_BLUE, PX_WHITE, PX_WHITE, PX_WHITE, PX_DSM_BLUE, PX_WHITE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_WHITE, PX_DSM_BLUE, PX_DSM_BLUE,
+    PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE,
+    PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE,
+    PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE,
+    PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE,
+    PX_CLEAR, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_CLEAR,
+    PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_DSM_BLUE, PX_CLEAR, PX_CLEAR, PX_CLEAR,
 };
 
-ICON_DESCRIPTOR(dashboard_icon_dsm, dsm_pixels);
-ICON_DESCRIPTOR(dashboard_icon_proxmox, proxmox_pixels);
-ICON_DESCRIPTOR(dashboard_icon_processor, processor_pixels);
-ICON_DESCRIPTOR(dashboard_icon_memory, memory_pixels);
-ICON_DESCRIPTOR(dashboard_icon_temperature, temperature_pixels);
-ICON_DESCRIPTOR(dashboard_icon_hdd, hdd_pixels);
-ICON_DESCRIPTOR(dashboard_icon_pool, pool_pixels);
-ICON_DESCRIPTOR(dashboard_icon_ip, ip_pixels);
-ICON_DESCRIPTOR(dashboard_icon_uptime, uptime_pixels);
-ICON_DESCRIPTOR(dashboard_icon_upload, upload_pixels);
-ICON_DESCRIPTOR(dashboard_icon_download, download_pixels);
+static const uint8_t proxmox_pixels[] = {
+    PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR,
+    PX_CLEAR, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_WHITE, PX_WHITE, PX_CLEAR,
+    PX_CLEAR, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_WHITE, PX_WHITE, PX_WHITE, PX_CLEAR,
+    PX_CLEAR, PX_CLEAR, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_WHITE, PX_WHITE, PX_WHITE, PX_CLEAR, PX_CLEAR,
+    PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_WHITE, PX_WHITE, PX_WHITE, PX_CLEAR, PX_CLEAR, PX_CLEAR,
+    PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_CLEAR, PX_CLEAR, PX_WHITE, PX_WHITE, PX_WHITE, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR,
+    PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_WHITE, PX_WHITE, PX_WHITE, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR,
+    PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_WHITE, PX_WHITE, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR,
+    PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_WHITE, PX_WHITE, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR,
+    PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_WHITE, PX_WHITE, PX_WHITE, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR,
+    PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_WHITE, PX_WHITE, PX_WHITE, PX_CLEAR, PX_CLEAR, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR,
+    PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_WHITE, PX_WHITE, PX_WHITE, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_CLEAR, PX_CLEAR, PX_CLEAR,
+    PX_CLEAR, PX_CLEAR, PX_WHITE, PX_WHITE, PX_WHITE, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_CLEAR, PX_CLEAR,
+    PX_CLEAR, PX_WHITE, PX_WHITE, PX_WHITE, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_CLEAR,
+    PX_CLEAR, PX_WHITE, PX_WHITE, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_PROXMOX_ORANGE, PX_PROXMOX_ORANGE, PX_CLEAR,
+    PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR, PX_CLEAR,
+};
+
+#undef PX_CLEAR
+#undef PX_DSM_BLUE
+#undef PX_PROXMOX_ORANGE
+#undef PX_WHITE
+
+static const uint8_t processor_pixels[] = {
+    0x24,0x24,0x7e,0x7e,0xff,0xff,0xc3,0xc3,0xdb,0xdb,0xdb,0xdb,0xc3,0xc3,0xff,0xff,
+    0xff,0xff,0xc3,0xc3,0xdb,0xdb,0xdb,0xdb,0xc3,0xc3,0xff,0xff,0x7e,0x7e,0x24,0x24,
+};
+static const uint8_t memory_pixels[] = {
+    0,0,0,0,0x3f,0xfc,0x60,0x06,0x6d,0xb6,0x6d,0xb6,0x60,0x06,0x3f,0xfc,
+    0x24,0x90,0x24,0x90,0,0,0,0,0,0,0,0,0,0,0,0,
+};
+static const uint8_t temperature_pixels[] = {
+    0x07,0x80,0x0c,0xc0,0x0c,0xc0,0x0c,0xc0,0x0d,0xc0,0x0d,0xc0,0x0d,0xc0,0x0d,0xc0,
+    0x1d,0xe0,0x3f,0xf0,0x3f,0xf0,0x3f,0xf0,0x1f,0xe0,0x0f,0xc0,0,0,0,0,
+};
+static const uint8_t hdd_pixels[] = {
+    0x3f,0xfc,0x60,0x06,0xc0,0x03,0xc7,0xe3,0xc8,0x13,0xc9,0x93,0xc8,0x13,0xc7,0xe3,
+    0xc0,0x03,0xcf,0xf3,0xc8,0x13,0xcb,0x53,0xc8,0x13,0xcf,0xf3,0x60,0x06,0x3f,0xfc,
+};
+static const uint8_t pool_pixels[] = {
+    0x1f,0xf8,0x3f,0xfc,0x60,0x06,0x3f,0xfc,0x1f,0xf8,0x20,0x04,0x60,0x06,0x3f,0xfc,
+    0x1f,0xf8,0x20,0x04,0x60,0x06,0x3f,0xfc,0x1f,0xf8,0x20,0x04,0x3f,0xfc,0x1f,0xf8,
+};
+static const uint8_t globe_pixels[] = {
+    0x07,0xe0,0x18,0x18,0x27,0xe4,0x49,0x92,0x91,0x89,0x91,0x89,0xff,0xff,0x91,0x89,
+    0x91,0x89,0xff,0xff,0x91,0x89,0x91,0x89,0x49,0x92,0x27,0xe4,0x18,0x18,0x07,0xe0,
+};
+static const uint8_t uptime_pixels[] = {
+    0x07,0xe0,0x18,0x18,0x20,0x04,0x41,0x82,0x81,0x81,0x81,0x81,0x81,0x81,0x81,0xf1,
+    0x80,0x19,0x80,0x01,0x80,0x01,0x40,0x02,0x20,0x04,0x18,0x18,0x07,0xe0,0,0,
+};
+static const uint8_t upload_pixels[] = {
+    0,0x60,0,0xf0,0x01,0x98,0x03,0x0c,0,0x60,0,0x60,
+    0,0x60,0,0x60,0,0x60,0,0x60,0,0,0,0,
+};
+static const uint8_t download_pixels[] = {
+    0,0x60,0,0x60,0,0x60,0,0x60,0,0x60,0,0x60,
+    0x03,0x0c,0x01,0x98,0,0xf0,0,0x60,0,0,0,0,
+};
+
+COLOR_ICON_DESCRIPTOR(dashboard_icon_dsm, dsm_pixels);
+COLOR_ICON_DESCRIPTOR(dashboard_icon_proxmox, proxmox_pixels);
+MASK_ICON_DESCRIPTOR(dashboard_icon_processor, processor_pixels, 16, 16);
+MASK_ICON_DESCRIPTOR(dashboard_icon_memory, memory_pixels, 16, 16);
+MASK_ICON_DESCRIPTOR(dashboard_icon_temperature, temperature_pixels, 16, 16);
+MASK_ICON_DESCRIPTOR(dashboard_icon_hdd, hdd_pixels, 16, 16);
+MASK_ICON_DESCRIPTOR(dashboard_icon_pool, pool_pixels, 16, 16);
+MASK_ICON_DESCRIPTOR(dashboard_icon_globe, globe_pixels, 16, 16);
+MASK_ICON_DESCRIPTOR(dashboard_icon_uptime, uptime_pixels, 16, 16);
+MASK_ICON_DESCRIPTOR(dashboard_icon_upload, upload_pixels, 12, 12);
+MASK_ICON_DESCRIPTOR(dashboard_icon_download, download_pixels, 12, 12);
