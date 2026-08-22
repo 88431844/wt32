@@ -45,6 +45,16 @@ class MonitorMigrationContractTest(unittest.TestCase):
         self.assertIn("MBEDTLS_ERR_SSL_WANT_READ", PROVIDER)
         self.assertIn("read_deadline_us", PROVIDER)
 
+    def test_pve_guest_network_interfaces_are_requested_with_get(self):
+        guest_network_collection = PROVIDER[
+            PROVIDER.index('"/api2/json/nodes/%s/qemu/%" PRIu32 "/agent/network-get-interfaces"'):
+        ]
+        guest_network_collection = guest_network_collection[
+            :guest_network_collection.index("snapshot->pve_online = true;")
+        ]
+        self.assertIn("path, false, &agent_root", guest_network_collection)
+        self.assertNotIn("path, true, &agent_root", guest_network_collection)
+
     def test_snmp_walks_complete_dynamic_subtrees(self):
         self.assertNotIn("SNMP_COLLECT_BUDGET_MS", PROVIDER)
         self.assertNotIn("SNMP_MAX_POOLS", PROVIDER)

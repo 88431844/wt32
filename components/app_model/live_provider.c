@@ -473,7 +473,7 @@ static bool collect_pve(const char *host, const char *node, const char *token_id
         }
         cJSON *agent_root = NULL;
         char agent_error[32] = {0};
-        if (pve_get_json(host, node, auth, ca, path, true, &agent_root,
+        if (pve_get_json(host, node, auth, ca, path, false, &agent_root,
                          agent_error, sizeof(agent_error))) {
             guest->guest_agent = qemu;
             (void)select_guest_ipv4(agent_root, qemu, guest->ipv4_address,
