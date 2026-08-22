@@ -61,6 +61,18 @@ class DashboardUiContractTest(unittest.TestCase):
         self.assertIn("pve_guest_count", self.source)
         self.assertIn("nas_pool_count", self.source)
 
+    def test_nas_remaining_bars_use_positive_green_in_every_theme(self) -> None:
+        self.assertIn(
+            "lv_obj_set_style_bg_color(s_ui.nas_row_bars[i], "
+            "lv_color_hex(palette()->positive), LV_PART_MAIN)",
+            self.source,
+        )
+        self.assertNotIn(
+            "lv_obj_set_style_bg_color(s_ui.nas_row_bars[i], "
+            "lv_color_hex(palette()->free), LV_PART_MAIN)",
+            self.source,
+        )
+
     def test_lvgl_printf_does_not_receive_floating_point_arguments(self) -> None:
         self.assertNotIn('lv_label_set_text_fmt(s_ui.pve_load_value, "%.1f', self.source)
         self.assertNotIn('lv_label_set_text_fmt(s_ui.vm_row_metrics[i], "C %.0f', self.source)

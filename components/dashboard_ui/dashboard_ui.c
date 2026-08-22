@@ -1443,7 +1443,7 @@ static void update_nas(void)
             lv_label_set_text(s_ui.nas_row_values[i], "--/-- 剩--");
             lv_bar_set_value(s_ui.nas_row_bars[i], 0, LV_ANIM_OFF);
         }
-        lv_obj_set_style_bg_color(s_ui.nas_row_bars[i], lv_color_hex(palette()->free), LV_PART_MAIN);
+        lv_obj_set_style_bg_color(s_ui.nas_row_bars[i], lv_color_hex(palette()->positive), LV_PART_MAIN);
         lv_obj_set_style_bg_color(s_ui.nas_row_bars[i], lv_color_hex(palette()->used), LV_PART_INDICATOR);
     }
     if (nas_live && snapshot->nas_cpu_valid) {
