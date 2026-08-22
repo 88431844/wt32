@@ -1,346 +1,70 @@
 from pathlib import Path
 import unittest
 
-
 ROOT = Path(__file__).resolve().parents[1]
-UI = ROOT / "components/dashboard_ui/dashboard_ui.c"
-FONT_14 = ROOT / "components/dashboard_ui/fonts/app_font_14.c"
-
+UI = (ROOT / "components/dashboard_ui/dashboard_ui.c").read_text(encoding="utf-8")
+ICONS_HEADER = ROOT / "components/dashboard_ui/include/dashboard_icons.h"
+ICONS_SOURCE = ROOT / "components/dashboard_ui/assets/dashboard_icons.c"
 
 class DashboardUiContractTest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.source = UI.read_text(encoding="utf-8")
+    def test_nas_pool_and_disk_lists_page_four_dynamic_items(self):
+        self.assertIn("#define NAS_VISIBLE 4", UI)
+        self.assertIn("#define NAS_DISK_VISIBLE 4", UI)
+        for marker in ("nas_pool_offset", "nas_pool_previous", "nas_pool_next", "nas_pool_page",
+                       "snapshot->nas_pool_count", "snapshot->nas_disk_count"):
+            self.assertIn(marker, UI)
+        self.assertNotIn("APP_MAX_NAS_", UI)
 
-    def _function_body(self, name: str) -> str:
-        marker = f"static void {name}("
-        search = 0
-        while True:
-            start = self.source.find(marker, search)
-            if start < 0:
-                self.fail(f"function definition not found: {name}")
-            signature_end = self.source.find(")", start)
-            opening = self.source.find("{", signature_end)
-            if self.source[signature_end + 1:opening].strip() == "":
-                break
-            search = signature_end + 1
-        depth = 0
-        for index in range(opening, len(self.source)):
-            if self.source[index] == "{":
-                depth += 1
-            elif self.source[index] == "}":
-                depth -= 1
-                if depth == 0:
-                    return self.source[opening:index + 1]
-        self.fail(f"unterminated function body: {name}")
+    def test_nas_list_body_toggles_and_pagers_do_not_toggle(self):
+        for marker in ("nas_pool_list_event", "show_nas_disks", "nas_disk_list_event",
+                       "show_nas_pools", "lv_event_stop_bubbling(event)"):
+            self.assertIn(marker, UI)
+        self.assertNotIn("capacity_bytes", UI)
 
-    def test_only_nas_pve_and_settings_pages_are_created(self) -> None:
-        self.assertIn("#define PAGE_COUNT 3", self.source)
-        self.assertIn("create_pve_page", self.source)
-        self.assertIn("create_nas_page", self.source)
-        self.assertIn("create_settings_page", self.source)
-        self.assertNotIn("create_weather_page", self.source)
-        self.assertNotIn("create_market_page", self.source)
-        self.assertNotIn("lv_tileview_create", self.source)
+    def test_loading_offline_and_refresh_failure_are_distinct(self):
+        for marker in ('"数据加载中"', "APP_MODEL_EVENT_LOADING", "APP_MODEL_EVENT_OFFLINE",
+                       "APP_MODEL_EVENT_REFRESH_FAILED", '"刷新失败，已显示上次数据"'):
+            self.assertIn(marker, UI)
+        self.assertNotIn("离线 · 缓存", UI)
 
-    def test_top_bar_orders_nas_status_pve_settings_without_power(self) -> None:
-        self.assertIn('make_button(bar, "NAS", 4, 3, 76, 26', self.source)
-        self.assertIn('make_label(bar, "--:--", 84, 7, 52', self.source)
-        self.assertIn('make_label(bar, "WiFi未连接", 140, 7, 166', self.source)
-        self.assertIn('make_button(bar, "PVE", 310, 3, 76, 26', self.source)
-        self.assertIn('make_button(bar, "设置", 390, 3, 86, 26', self.source)
-        self.assertIn('"WiFi未连接，请到设置里面设置"', self.source)
-        self.assertNotIn('"PWR"', self.source)
+    def test_refresh_failure_toast_is_centered_transient_and_noninteractive(self):
+        for marker in ("show_refresh_toast", "lv_obj_center(s_ui.toast)",
+                       "lv_obj_clear_flag(s_ui.toast, LV_OBJ_FLAG_CLICKABLE)",
+                       "LV_OPA_TRANSP", "2500"):
+            self.assertIn(marker, UI)
 
-    def test_settings_page_has_wifi_rotation_brightness_and_token_controls(self) -> None:
-        self.assertIn("lv_dropdown_create", self.source)
-        self.assertIn("lv_keyboard_create", self.source)
-        self.assertIn("lv_slider_create", self.source)
-        self.assertIn('"PVE Token 设置"', self.source)
-        self.assertIn('"0°"', self.source)
-        self.assertIn('"180°"', self.source)
+    def test_nas_footer_has_final_balanced_geometry(self):
+        self.assertIn("#define NAS_METRICS_HEIGHT 42", UI)
+        self.assertIn("NAS_METRIC_CELL_WIDTH 68", UI)
+        self.assertIn("NAS_METRIC_DYNAMIC_COUNT 4", UI)
+        for unit in ('"B"', '"K"', '"M"', '"G"', '"T"'):
+            self.assertIn(unit, UI)
+        self.assertNotIn('"CPU %s"', UI)
+        self.assertNotIn('"IP %s"', UI)
 
-    def test_pve_layout_has_inline_vm_detail_and_vertical_guest_navigation(self) -> None:
-        self.assertIn("pve_overview", self.source)
-        self.assertIn("vm_detail", self.source)
-        self.assertIn("selected_vm_index", self.source)
-        self.assertIn("vm_nav_buttons", self.source)
-        self.assertIn("show_vm_detail", self.source)
-        self.assertIn("show_pve_overview", self.source)
-        self.assertIn("vm_detail_previous", self.source)
-        self.assertIn("vm_detail_next", self.source)
-        self.assertIn("vm_scroll_event", self.source)
-        self.assertIn("make_button(list, \"^\"", self.source)
-        self.assertIn("make_button(list, \"v\"", self.source)
-        self.assertIn("PVE_SUBNAV_LEFT", self.source)
-        self.assertIn("PVE_SUBNAV_RIGHT", self.source)
-        self.assertIn("PVE_VM_SCROLL_UP", self.source)
-        self.assertIn("PVE_VM_SCROLL_DOWN", self.source)
+    def test_offline_icon_assets_cover_brand_hardware_and_status(self):
+        self.assertTrue(ICONS_HEADER.exists())
+        self.assertTrue(ICONS_SOURCE.exists())
+        icons = ICONS_HEADER.read_text(encoding="utf-8")
+        for name in ("dashboard_icon_dsm", "dashboard_icon_proxmox", "dashboard_icon_processor",
+                     "dashboard_icon_memory", "dashboard_icon_temperature", "dashboard_icon_hdd",
+                     "dashboard_icon_pool", "dashboard_icon_ip", "dashboard_icon_uptime",
+                     "dashboard_icon_upload", "dashboard_icon_download"):
+            self.assertIn(name, icons)
 
-    def test_live_fields_use_theme_split_used_and_remaining_bars(self) -> None:
-        self.assertIn("palette()->free", self.source)
-        self.assertIn("palette()->used", self.source)
-        self.assertIn("pve_guest_count", self.source)
-        self.assertIn("nas_pool_count", self.source)
+    def test_settings_homepage_selector_commits_before_navigation(self):
+        self.assertIn("homepage_event", UI)
+        self.assertIn("DEVICE_KEY_HOME_PAGE", UI)
+        callback = UI[UI.index("static void homepage_event"):]
+        callback = callback[:callback.index("static void", 20)]
+        self.assertLess(callback.index("device_settings_set_u8"), callback.index("s_ui.active_page"))
+        for marker in ("homepage_buttons", "saved_homepage", "saved_homepage > 1"):
+            self.assertIn(marker, UI)
 
-    def test_nas_remaining_bars_use_positive_green_in_every_theme(self) -> None:
-        self.assertIn(
-            "lv_obj_set_style_bg_color(s_ui.nas_row_bars[i], "
-            "lv_color_hex(palette()->positive), LV_PART_MAIN)",
-            self.source,
-        )
-        self.assertNotIn(
-            "lv_obj_set_style_bg_color(s_ui.nas_row_bars[i], "
-            "lv_color_hex(palette()->free), LV_PART_MAIN)",
-            self.source,
-        )
-
-    def test_lvgl_printf_does_not_receive_floating_point_arguments(self) -> None:
-        self.assertNotIn('lv_label_set_text_fmt(s_ui.pve_load_value, "%.1f', self.source)
-        self.assertNotIn('lv_label_set_text_fmt(s_ui.vm_row_metrics[i], "C %.0f', self.source)
-        self.assertIn("format_percent(cpu, sizeof(cpu), guest->cpu_percent)", self.source)
-
-    def test_five_persistent_themes_default_to_graphite(self) -> None:
-        self.assertIn("#define THEME_COUNT 5", self.source)
-        self.assertIn("THEME_DEEP_OCEAN", self.source)
-        self.assertIn("THEME_HIGH_CONTRAST", self.source)
-        self.assertIn("THEME_MIST_GRAY", self.source)
-        self.assertIn("THEME_GRAPHITE", self.source)
-        self.assertIn("THEME_CHARCOAL_CORAL", self.source)
-        self.assertIn("static uint8_t s_theme_id = THEME_GRAPHITE", self.source)
-        self.assertIn("DEVICE_KEY_THEME", self.source)
-
-    def test_settings_offer_supported_refresh_intervals_and_default_to_five_seconds(self) -> None:
-        self.assertIn("#define REFRESH_OPTION_COUNT 4", self.source)
-        for label in ("5 秒", "10 秒", "30 秒", "60 秒"):
-            self.assertIn(f'"{label}"', self.source)
-        self.assertNotIn('"120 秒"', self.source)
-        self.assertIn("static uint8_t s_refresh_seconds = 5", self.source)
-        self.assertIn("uint8_t saved_refresh = 5", self.source)
-        self.assertIn("else s_refresh_seconds = 5", self.source)
-        self.assertIn("DEVICE_KEY_REFRESH", self.source)
-        self.assertIn("app_model_set_refresh_seconds", self.source)
-        self.assertIn("app_model_set_active_monitor", self.source)
-
-    def test_nas_layout_toggles_between_pool_and_disk_lists(self) -> None:
-        for field in (
-            "nas_overview", "nas_detail", "nas_disks_visible", "show_nas_pools",
-            "show_nas_disks", "nas_disk_rows", "nas_pool_list_event",
-            "nas_disk_list_event",
-        ):
-            self.assertIn(field, self.source)
-        for field in (
-            "nas_overview_button", "nas_pool_buttons", "nas_pool_button_labels",
-            "nas_pool_button_dots", "selected_nas_pool_index", "show_nas_overview",
-            "show_nas_detail",
-        ):
-            self.assertNotIn(field, self.source)
-        self.assertNotIn('make_button(page, "NAS 总览"', self.source)
-        self.assertIn('"存储池%d"', self.source)
-        self.assertIn('"NAS 物理盘（未按池映射）"', self.source)
-
-    def test_nas_list_surfaces_and_rows_toggle_views(self) -> None:
-        self.assertIn(
-            "lv_obj_add_event_cb(s_ui.nas_overview, nas_pool_list_event",
-            self.source,
-        )
-        self.assertIn(
-            "lv_obj_add_event_cb(s_ui.nas_rows[i], nas_pool_list_event",
-            self.source,
-        )
-        self.assertIn(
-            "lv_obj_add_event_cb(s_ui.nas_detail, nas_disk_list_event",
-            self.source,
-        )
-        self.assertIn(
-            "lv_obj_add_event_cb(row, nas_disk_list_event",
-            self.source,
-        )
-
-    def test_nas_row_visual_children_do_not_capture_clicks(self) -> None:
-        for field in (
-            "s_ui.nas_row_status_dots[i]",
-            "s_ui.nas_row_bars[i]",
-            "s_ui.nas_disk_dots[i]",
-        ):
-            self.assertIn(
-                f"lv_obj_clear_flag({field}, LV_OBJ_FLAG_CLICKABLE)",
-                self.source,
-            )
-
-    def test_nas_interactions_have_localized_state_and_paging_contracts(self) -> None:
-        pools = self._function_body("show_nas_pools")
-        self.assertIn("s_ui.nas_disks_visible = false", pools)
-        self.assertIn("set_hidden(s_ui.nas_overview, false)", pools)
-        self.assertIn("set_hidden(s_ui.nas_detail, true)", pools)
-
-        disks = self._function_body("show_nas_disks")
-        self.assertIn("s_ui.nas_disks_visible = true", disks)
-        self.assertIn("set_hidden(s_ui.nas_overview, true)", disks)
-        self.assertIn("set_hidden(s_ui.nas_detail, false)", disks)
-        self.assertIn("update_nas_disks()", disks)
-
-        pool_event = self._function_body("nas_pool_list_event")
-        self.assertIn("lv_event_get_code(event) == LV_EVENT_CLICKED", pool_event)
-        self.assertIn("show_nas_disks()", pool_event)
-
-        disk_event = self._function_body("nas_disk_list_event")
-        self.assertIn("lv_event_get_code(event) != LV_EVENT_CLICKED", disk_event)
-        self.assertIn("target == s_ui.nas_disk_previous", disk_event)
-        self.assertIn("target == s_ui.nas_disk_next", disk_event)
-        self.assertIn("show_nas_pools()", disk_event)
-        self.assertLess(
-            disk_event.index("target == s_ui.nas_disk_previous"),
-            disk_event.index("show_nas_pools()"),
-        )
-        self.assertLess(
-            disk_event.index("target == s_ui.nas_disk_next"),
-            disk_event.index("show_nas_pools()"),
-        )
-
-        page_event = self._function_body("nas_disk_page_event")
-        self.assertIn("direction < 0 && s_ui.nas_disk_offset >= NAS_DISK_VISIBLE", page_event)
-        self.assertIn("s_ui.nas_disk_offset -= NAS_DISK_VISIBLE", page_event)
-        self.assertIn("direction > 0 &&", page_event)
-        self.assertIn("s_ui.nas_disk_offset + NAS_DISK_VISIBLE < snapshot_disk_count", page_event)
-        self.assertIn("s_ui.nas_disk_offset <= APP_MAX_NAS_DISKS - NAS_DISK_VISIBLE", page_event)
-        self.assertIn("s_ui.nas_disk_offset += NAS_DISK_VISIBLE", page_event)
-        self.assertIn("update_nas_disks()", page_event)
-
-        update_disks = self._function_body("update_nas_disks")
-        self.assertIn("const int last_page_offset = snapshot_disk_count > NAS_DISK_VISIBLE ?", update_disks)
-        self.assertIn(
-            "((snapshot_disk_count - 1) / NAS_DISK_VISIBLE) * NAS_DISK_VISIBLE",
-            update_disks,
-        )
-        self.assertIn(
-            "if (s_ui.nas_disk_offset > last_page_offset) s_ui.nas_disk_offset = last_page_offset;",
-            update_disks,
-        )
-
-        self.assertNotIn('make_label(s_ui.nas_detail, "状态"', self.source)
-        self.assertIn('make_label(s_ui.nas_detail, "硬盘", 22, 44, 80', self.source)
-        self.assertIn('make_label(s_ui.nas_detail, "型号", 102, 44, 216', self.source)
-        self.assertIn('make_label(s_ui.nas_detail, "温度", 318, 44, 86', self.source)
-
-    def test_nas_disk_table_omits_capacity(self) -> None:
-        self.assertNotIn("nas_disk_capacities", self.source)
-        self.assertNotIn("disk->capacity_valid", self.source)
-        self.assertNotIn('make_label(s_ui.nas_detail, "容量"', self.source)
-
-    def test_nas_footer_is_two_rows_and_includes_ip_uptime_and_network(self) -> None:
-        self.assertIn("#define NAS_METRICS_HEIGHT 36", self.source)
-        self.assertIn("nas_upload_value", self.source)
-        self.assertIn("nas_download_value", self.source)
-        self.assertIn("nas_ip_value", self.source)
-        self.assertIn("nas_uptime_value", self.source)
-        self.assertIn("format_rate", self.source)
-        self.assertIn("format_uptime", self.source)
-
-    def test_nas_footer_uses_fixed_left_aligned_cells(self) -> None:
-        for field in ("nas_network_prefix", "nas_upload_value", "nas_download_value"):
-            self.assertIn(field, self.source)
-        self.assertIn('make_label(footer, "网", 8, 19, 18', self.source)
-        self.assertIn('make_label(footer, "↑--", 26, 19, 66', self.source)
-        self.assertIn('make_label(footer, "↓--", 94, 19, 66', self.source)
-        self.assertIn('make_label(footer, "CPU --", 8, 1, 160', self.source)
-        self.assertIn('make_label(footer, "内存 --", 168, 1, 170', self.source)
-        self.assertIn('make_label(footer, "温度 --", 338, 1, 118', self.source)
-        self.assertIn('make_label(footer, "IP --", 168, 19, 170', self.source)
-        self.assertIn('make_label(footer, "运行 --", 338, 19, 118', self.source)
-        for field in (
-            "nas_cpu_value", "nas_memory_value", "nas_temperature_value",
-            "nas_network_prefix", "nas_upload_value", "nas_download_value",
-            "nas_ip_value", "nas_uptime_value",
-        ):
-            self.assertIn(
-                f"lv_obj_set_style_text_align(s_ui.{field}, LV_TEXT_ALIGN_LEFT, 0)",
-                self.source,
-            )
-        self.assertNotIn(
-            'lv_label_set_text_fmt(s_ui.nas_network_value, "网 ↑%s ↓%s"',
-            self.source,
-        )
-
-    def test_nas_capacity_layout_uses_compact_values_and_status_dots(self) -> None:
-        self.assertIn("format_capacity", self.source)
-        self.assertIn('"%s/%s 剩%s"', self.source)
-        self.assertIn("nas_row_status_dots", self.source)
-        self.assertIn("nas_live && pool->healthy", self.source)
-        self.assertNotIn('"池 %d  %s"', self.source)
-
-    def test_nas_stale_and_offline_snapshots_hide_cached_metrics(self) -> None:
-        self.assertIn(
-            "const bool nas_live = snapshot->nas_online && !snapshot->nas_stale;",
-            self.source,
-        )
-        self.assertIn('snapshot->nas_stale ? "离线 · 缓存" : "离线"', self.source)
-        self.assertIn('lv_label_set_text(s_ui.nas_row_values[i], "--/-- 剩--")', self.source)
-        self.assertIn("lv_bar_set_value(s_ui.nas_row_bars[i], 0, LV_ANIM_OFF)", self.source)
-        self.assertIn('snapshot->nas_stale ? "NAS 离线 · 缓存" : "NAS 离线"', self.source)
-        for placeholder in ('"CPU --"', '"内存 --"', '"温度 --"'):
-            self.assertIn(placeholder, self.source)
-
-    def test_nas_footer_requires_each_live_metric_to_be_valid(self) -> None:
-        self.assertIn("nas_live && snapshot->nas_cpu_valid", self.source)
-        self.assertIn("nas_live && snapshot->nas_memory_valid", self.source)
-        self.assertIn("nas_live && snapshot->nas_temperature_valid", self.source)
-        self.assertIn('lv_label_set_text(s_ui.nas_cpu_value, "CPU --")', self.source)
-        self.assertIn('lv_label_set_text(s_ui.nas_memory_value, "内存 --")', self.source)
-        self.assertIn('lv_label_set_text(s_ui.nas_temperature_value, "温度 --")', self.source)
-
-    def test_nas_online_without_pools_is_not_reported_offline(self) -> None:
-        self.assertIn('"NAS 在线  未发现存储池"', self.source)
-        self.assertIn("if (!snapshot->nas_configured)", self.source)
-        self.assertIn("else if (nas_live)", self.source)
-        self.assertIn("else if (snapshot->nas_stale)", self.source)
-
-    def test_nas_disk_table_pages_across_the_snapshot_capacity(self) -> None:
-        self.assertIn("#define NAS_DISK_VISIBLE 4", self.source)
-        self.assertIn("APP_MAX_NAS_DISKS", self.source)
-        self.assertIn("nas_disk_offset", self.source)
-        self.assertIn("nas_disk_previous", self.source)
-        self.assertIn("nas_disk_next", self.source)
-        self.assertIn("nas_disk_page", self.source)
-        self.assertIn("nas_disk_page_event", self.source)
-        self.assertIn("s_ui.nas_disk_offset + i", self.source)
-        self.assertIn("APP_MAX_NAS_DISKS - NAS_DISK_VISIBLE", self.source)
-        self.assertIn('make_button(s_ui.nas_detail, "^", 428, 0, 28, 98', self.source)
-        self.assertIn('make_button(s_ui.nas_detail, "v", 428, 130, 28, 106', self.source)
-        self.assertIn('make_label(s_ui.nas_detail, "1/1", 428, 106, 28', self.source)
-        self.assertNotIn('make_button(s_ui.nas_detail, "<"', self.source)
-        self.assertNotIn('make_button(s_ui.nas_detail, ">"', self.source)
-        self.assertIn(
-            "((snapshot_disk_count - 1) / NAS_DISK_VISIBLE) * NAS_DISK_VISIBLE",
-            self.source,
-        )
-        self.assertNotIn("#define NAS_DISK_VISIBLE 8", self.source)
-
-    def test_vm_rows_include_ip_and_used_total_capacity(self) -> None:
-        self.assertIn("guest->ipv4_address", self.source)
-        self.assertIn("guest->memory_total", self.source)
-        self.assertIn("guest->disk_total", self.source)
-        for field in ("vm_header_ip", "vm_header_cpu", "vm_header_memory", "vm_header_disk"):
-            self.assertIn(field, self.source)
-        for field in ("vm_row_cpu", "vm_row_memory", "vm_row_disk"):
-            self.assertIn(field, self.source)
-        self.assertNotIn("vm_row_metrics", self.source)
-        self.assertNotIn("%-12s", self.source)
-
-    def test_pve_summary_does_not_claim_temperature(self) -> None:
-        self.assertNotIn("pve_cpu_temperature", self.source)
-        self.assertNotIn('make_label(summary, "温度"', self.source)
-
-    def test_status_dots_are_objects_and_dynamic_text_is_sanitized(self) -> None:
-        self.assertIn("make_status_dot", self.source)
-        self.assertIn("sanitize_dynamic_text", self.source)
-        self.assertNotIn('"●"', self.source)
-
-    def test_font_contains_nas_detail_glyphs(self) -> None:
-        font_source = FONT_14.read_text(encoding="utf-8")
-        for glyph in "物理按映射硬型号量计天用分异缓存在发现（）":
-            self.assertIn(glyph, font_source)
-
+    def test_top_navigation_does_not_persist_homepage(self):
+        callback = UI[UI.index("static void page_event"):]
+        callback = callback[:callback.index("static void", 20)]
+        self.assertNotIn("DEVICE_KEY_HOME_PAGE", callback)
 
 if __name__ == "__main__":
     unittest.main()

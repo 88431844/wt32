@@ -25,11 +25,10 @@
 
 #define DEFAULT_REFRESH_SECONDS 5
 #define HTTP_TIMEOUT_MS 5000
-#define HTTP_RESPONSE_MAX 24576
+#define INITIAL_REQUEST_TIMEOUT_MS 5000
+#define HTTP_INITIAL_CAPACITY 4096
 #define SNMP_RESPONSE_MAX 2048
 #define SNMP_TIMEOUT_MS 1800
-#define SNMP_COLLECT_BUDGET_MS 2200
-#define SNMP_MAX_POOLS APP_MAX_NAS_POOLS
 
 static const char *TAG = "live_provider";
 static QueueHandle_t s_snapshot_queue;
@@ -76,15 +75,6 @@ typedef struct {
 } nas_rate_baseline_t;
 
 static nas_rate_baseline_t s_nas_rate_baseline;
-static int64_t s_snmp_deadline_us;
-
-static uint32_t snmp_remaining_ms(void)
-{
-    if (s_snmp_deadline_us == 0) return SNMP_TIMEOUT_MS;
-    const int64_t remaining_us = s_snmp_deadline_us - esp_timer_get_time();
-    if (remaining_us <= 0) return 0;
-    return (uint32_t)((remaining_us + 999) / 1000);
-}
 
 static void copy_text(char *destination, size_t size, const char *source)
 {
@@ -158,6 +148,21 @@ static bool prepare_pve_leaf_pin(const char *certificate_pem)
     return is_leaf && s_pve_pin.ready;
 }
 
+static bool grow_http_buffer(char **buffer, size_t *capacity, size_t required)
+{
+    if (buffer == NULL || capacity == NULL || required == 0) return false;
+    size_t next_capacity = *capacity > 0 ? *capacity : HTTP_INITIAL_CAPACITY;
+    while (next_capacity < required) {
+        if (next_capacity > SIZE_MAX / 2) return false;
+        next_capacity *= 2;
+    }
+    char *replacement = realloc(*buffer, next_capacity);
+    if (replacement == NULL) return false;
+    *buffer = replacement;
+    *capacity = next_capacity;
+    return true;
+}
+
 static bool pve_get_json(const char *host, const char *common_name,
                          const char *token_header, const char *ca,
                          const char *path, bool post, cJSON **root_out,
@@ -169,8 +174,9 @@ static bool pve_get_json(const char *host, const char *common_name,
         return false;
     }
 
-    char *body_buffer = heap_caps_malloc(HTTP_RESPONSE_MAX, MALLOC_CAP_8BIT);
-    if (body_buffer == NULL) {
+    char *body_buffer = NULL;
+    size_t body_capacity = 0;
+    if (!grow_http_buffer(&body_buffer, &body_capacity, HTTP_INITIAL_CAPACITY)) {
         snprintf(error, error_size, "PVE 响应缓冲区不足");
         return false;
     }
@@ -219,13 +225,37 @@ static bool pve_get_json(const char *host, const char *common_name,
     }
     memset(request, 0, sizeof(request));
     size_t received = 0;
-    while (sent == (size_t)request_length && received + 1 < HTTP_RESPONSE_MAX) {
+    bool response_complete = false;
+    bool response_failed = false;
+    const int64_t read_deadline_us = esp_timer_get_time() + HTTP_TIMEOUT_MS * 1000LL;
+    while (sent == (size_t)request_length) {
+        if (!grow_http_buffer(&body_buffer, &body_capacity, received + 2049)) {
+            response_failed = true;
+            break;
+        }
         ssize_t count = esp_tls_conn_read(tls, body_buffer + received,
-                                          HTTP_RESPONSE_MAX - received - 1);
-        if (count <= 0) break;
+                                          body_capacity - received - 1);
+        if (count == 0) {
+            response_complete = true;
+            break;
+        }
+        if ((count == MBEDTLS_ERR_SSL_WANT_READ || count == MBEDTLS_ERR_SSL_WANT_WRITE) &&
+            esp_timer_get_time() < read_deadline_us) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+        if (count < 0 || esp_timer_get_time() >= read_deadline_us) {
+            response_failed = true;
+            break;
+        }
         received += (size_t)count;
     }
     esp_tls_conn_destroy(tls);
+    if (sent != (size_t)request_length || response_failed || !response_complete) {
+        snprintf(error, error_size, "PVE HTTP 响应未完整接收");
+        free(body_buffer);
+        return false;
+    }
     body_buffer[received] = '\0';
     int status = 0;
     if (sscanf(body_buffer, "HTTP/%*u.%*u %d", &status) != 1 || status != 200) {
@@ -313,14 +343,17 @@ static bool parse_pve_guests(const cJSON *root, app_snapshot_t *snapshot)
 {
     const cJSON *data = json_data(root);
     if (!cJSON_IsArray(data)) return false;
+    const int item_count = cJSON_GetArraySize(data);
+    if (item_count < 0 ||
+        !app_snapshot_reserve_pve_guests(snapshot, (size_t)item_count)) return false;
     snapshot->pve_guest_count = 0;
     snapshot->pve_running_count = 0;
     const cJSON *item;
     cJSON_ArrayForEach(item, data) {
-        if (snapshot->pve_guest_count >= APP_MAX_PVE_GUESTS || !cJSON_IsObject(item)) break;
+        if (!cJSON_IsObject(item)) return false;
         const char *kind = json_string(item, "type");
         if (strcmp(kind, "qemu") != 0 && strcmp(kind, "lxc") != 0) continue;
-        pve_guest_t *guest = &snapshot->pve_guests[snapshot->pve_guest_count++];
+        pve_guest_t *guest = &snapshot->pve_guests[snapshot->pve_guest_count];
         memset(guest, 0, sizeof(*guest));
         guest->vmid = (uint32_t)json_u64(item, "vmid");
         copy_text(guest->name, sizeof(guest->name), json_string(item, "name"));
@@ -334,6 +367,7 @@ static bool parse_pve_guests(const cJSON *root, app_snapshot_t *snapshot)
         guest->cpu_cores = (uint32_t)json_u64(item, "maxcpu");
         guest->uptime_seconds = (uint32_t)json_u64(item, "uptime");
         if (guest->running) snapshot->pve_running_count++;
+        snapshot->pve_guest_count++;
     }
     return true;
 }
@@ -425,7 +459,7 @@ static bool collect_pve(const char *host, const char *node, const char *token_id
         return false;
     }
     cJSON_Delete(root);
-    for (uint32_t i = 0; i < snapshot->pve_guest_count; ++i) {
+    for (size_t i = 0; i < snapshot->pve_guest_count; ++i) {
         pve_guest_t *guest = &snapshot->pve_guests[i];
         if (!guest->running) continue;
         const bool qemu = strcmp(guest->kind, "qemu") == 0;
@@ -697,12 +731,10 @@ static bool parse_snmp_response(const uint8_t *buffer, size_t length,
 static bool snmp_exchange(const char *host, const char *community, const char *oid,
                           bool get_next, snmp_value_t *value)
 {
-    if (snmp_remaining_ms() == 0) return false;
     struct sockaddr_in destination = {0};
     destination.sin_family = AF_INET;
     destination.sin_port = htons(161);
     if (inet_pton(AF_INET, host, &destination.sin_addr) != 1) return false;
-    if (snmp_remaining_ms() == 0) return false;
     int socket_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (socket_fd < 0) return false;
     uint8_t request[512];
@@ -711,19 +743,17 @@ static bool snmp_exchange(const char *host, const char *community, const char *o
     const size_t request_length = build_snmp_request(request, sizeof(request), community, oid,
                                                      current_request_id, get_next);
     bool success = false;
-    if (request_length > 0 && snmp_remaining_ms() > 0 &&
+    if (request_length > 0 &&
         sendto(socket_fd, request, request_length, 0,
                (const struct sockaddr *)&destination, sizeof(destination)) >= 0) {
         fd_set read_set;
         FD_ZERO(&read_set);
         FD_SET(socket_fd, &read_set);
-        const uint32_t remaining_ms = snmp_remaining_ms();
-        const uint32_t timeout_ms = remaining_ms > SNMP_TIMEOUT_MS ? SNMP_TIMEOUT_MS : remaining_ms;
         struct timeval timeout = {
-            .tv_sec = timeout_ms / 1000,
-            .tv_usec = (timeout_ms % 1000) * 1000,
+            .tv_sec = SNMP_TIMEOUT_MS / 1000,
+            .tv_usec = (SNMP_TIMEOUT_MS % 1000) * 1000,
         };
-        if (timeout_ms > 0 && select(socket_fd + 1, &read_set, NULL, NULL, &timeout) > 0) {
+        if (select(socket_fd + 1, &read_set, NULL, NULL, &timeout) > 0) {
             uint8_t response[SNMP_RESPONSE_MAX];
             const int received = recv(socket_fd, response, sizeof(response), 0);
             if (received > 0) {
@@ -765,12 +795,30 @@ static bool oid_in_subtree(const char *oid, const char *base)
     return strncmp(oid, base, base_length) == 0 && oid[base_length] == '.';
 }
 
+static int snmp_oid_compare(const char *left, const char *right)
+{
+    uint32_t left_numbers[32];
+    uint32_t right_numbers[32];
+    size_t left_count = sizeof(left_numbers) / sizeof(left_numbers[0]);
+    size_t right_count = sizeof(right_numbers) / sizeof(right_numbers[0]);
+    if (!parse_oid(left, left_numbers, &left_count) ||
+        !parse_oid(right, right_numbers, &right_count)) return 0;
+    const size_t common = left_count < right_count ? left_count : right_count;
+    for (size_t i = 0; i < common; ++i) {
+        if (left_numbers[i] < right_numbers[i]) return -1;
+        if (left_numbers[i] > right_numbers[i]) return 1;
+    }
+    if (left_count < right_count) return -1;
+    if (left_count > right_count) return 1;
+    return 0;
+}
+
 static bool synology_disk_healthy(uint64_t status)
 {
     return status == 1;
 }
 
-static void collect_nas_disks(const char *host, const char *community,
+static bool collect_nas_disks(const char *host, const char *community,
                               app_snapshot_t *snapshot)
 {
     static const char *disk_id_oid = "1.3.6.1.4.1.6574.2.1.1.2";
@@ -778,15 +826,18 @@ static void collect_nas_disks(const char *host, const char *community,
     copy_text(cursor, sizeof(cursor), disk_id_oid);
     snapshot->nas_disk_count = 0;
 
-    for (size_t i = 0; i < APP_MAX_NAS_DISKS * 2 &&
-                       snapshot->nas_disk_count < APP_MAX_NAS_DISKS; ++i) {
+    while (true) {
         snmp_value_t value;
-        if (!snmp_exchange(host, community, cursor, true, &value) ||
-            !oid_in_subtree(value.oid, disk_id_oid) ||
-            value.type != SNMP_VALUE_STRING) break;
+        if (!snmp_exchange(host, community, cursor, true, &value)) return false;
+        if (!oid_in_subtree(value.oid, disk_id_oid)) return true;
+        if (value.type != SNMP_VALUE_STRING || snmp_oid_compare(value.oid, cursor) <= 0)
+            return false;
         copy_text(cursor, sizeof(cursor), value.oid);
 
-        nas_disk_t *disk = &snapshot->nas_disks[snapshot->nas_disk_count++];
+        if (!app_snapshot_reserve_nas_disks(snapshot, snapshot->nas_disk_count + 1))
+            return false;
+
+        nas_disk_t *disk = &snapshot->nas_disks[snapshot->nas_disk_count];
         memset(disk, 0, sizeof(*disk));
         copy_text(disk->id, sizeof(disk->id), value.text);
         disk->capacity_valid = false;
@@ -808,6 +859,7 @@ static void collect_nas_disks(const char *host, const char *community,
         disk->temperature_valid = snmp_get_number(host, community, oid, &temperature) &&
                                   temperature <= 150;
         if (disk->temperature_valid) disk->temperature_c = (int)temperature;
+        snapshot->nas_disk_count++;
     }
 }
 
@@ -924,7 +976,6 @@ static const char *synology_raid_status(uint64_t status)
 
 static bool collect_nas(const char *host, const char *community, app_snapshot_t *snapshot)
 {
-    s_snmp_deadline_us = esp_timer_get_time() + SNMP_COLLECT_BUDGET_MS * 1000LL;
     snapshot->nas_cpu_valid = false;
     snapshot->nas_memory_valid = false;
     snapshot->nas_temperature_valid = false;
@@ -935,7 +986,6 @@ static bool collect_nas(const char *host, const char *community, app_snapshot_t 
         snapshot->nas_configured = false;
         copy_text(snapshot->nas_last_error, sizeof(snapshot->nas_last_error),
                   "请在配置页填写只读 SNMP Community");
-        s_snmp_deadline_us = 0;
         return false;
     }
     snapshot->nas_configured = true;
@@ -943,7 +993,6 @@ static bool collect_nas(const char *host, const char *community, app_snapshot_t 
     if (inet_pton(AF_INET, host, &nas_address) != 1) {
         copy_text(snapshot->nas_last_error, sizeof(snapshot->nas_last_error), "NAS IP 无效");
         snapshot->nas_online = false;
-        s_snmp_deadline_us = 0;
         return false;
     }
     uint64_t ticks = 0;
@@ -1009,22 +1058,24 @@ static bool collect_nas(const char *host, const char *community, app_snapshot_t 
     snapshot->nas_pool_count = 0;
     char cursor[96];
     copy_text(cursor, sizeof(cursor), raid_name_oid);
-    for (size_t i = 0; i < SNMP_MAX_POOLS * 2 &&
-                       snapshot->nas_pool_count < SNMP_MAX_POOLS; ++i) {
+    while (true) {
         snmp_value_t value;
-        if (!snmp_exchange(host, community, cursor, true, &value) ||
-            !oid_in_subtree(value.oid, raid_name_oid) ||
-            value.type != SNMP_VALUE_STRING) break;
+        if (!snmp_exchange(host, community, cursor, true, &value)) return false;
+        if (!oid_in_subtree(value.oid, raid_name_oid)) break;
+        if (value.type != SNMP_VALUE_STRING || snmp_oid_compare(value.oid, cursor) <= 0)
+            return false;
         copy_text(cursor, sizeof(cursor), value.oid);
         if (strncmp(value.text, "Volume ", 7) != 0) continue;
-        nas_pool_t *pool = &snapshot->nas_pools[snapshot->nas_pool_count++];
+        if (!app_snapshot_reserve_nas_pools(snapshot, snapshot->nas_pool_count + 1))
+            return false;
+        nas_pool_t *pool = &snapshot->nas_pools[snapshot->nas_pool_count];
         memset(pool, 0, sizeof(*pool));
         copy_text(pool->name, sizeof(pool->name), value.text);
         char oid[112];
         append_oid_index(oid, sizeof(oid), "1.3.6.1.4.1.6574.3.1.1.5", value.last_index);
-        (void)snmp_get_number(host, community, oid, &pool->total_bytes);
+        if (!snmp_get_number(host, community, oid, &pool->total_bytes)) return false;
         append_oid_index(oid, sizeof(oid), "1.3.6.1.4.1.6574.3.1.1.4", value.last_index);
-        (void)snmp_get_number(host, community, oid, &pool->free_bytes);
+        if (!snmp_get_number(host, community, oid, &pool->free_bytes)) return false;
         if (pool->total_bytes > 0 && pool->total_bytes < 100000000000ULL) {
             pool->total_bytes *= 1024ULL * 1024ULL;
             pool->free_bytes *= 1024ULL * 1024ULL;
@@ -1033,16 +1084,14 @@ static bool collect_nas(const char *host, const char *community, app_snapshot_t 
                            pool->total_bytes - pool->free_bytes : 0;
         uint64_t raid_status = 0;
         append_oid_index(oid, sizeof(oid), "1.3.6.1.4.1.6574.3.1.1.3", value.last_index);
-        if (snmp_get_number(host, community, oid, &raid_status)) {
-            pool->healthy = raid_status == 1;
-            const char *status_text = synology_raid_status(raid_status);
-            if (status_text != NULL) copy_text(pool->description, sizeof(pool->description), status_text);
-            else snprintf(pool->description, sizeof(pool->description), "状态 %" PRIu64, raid_status);
-        } else {
-            copy_text(pool->description, sizeof(pool->description), pool->name);
-        }
+        if (!snmp_get_number(host, community, oid, &raid_status)) return false;
+        pool->healthy = raid_status == 1;
+        const char *status_text = synology_raid_status(raid_status);
+        if (status_text != NULL) copy_text(pool->description, sizeof(pool->description), status_text);
+        else snprintf(pool->description, sizeof(pool->description), "状态 %" PRIu64, raid_status);
+        snapshot->nas_pool_count++;
     }
-    collect_nas_disks(host, community, snapshot);
+    if (!collect_nas_disks(host, community, snapshot)) return false;
     collect_nas_network(host, community, snapshot);
     const bool success = snapshot->nas_uptime_valid || snapshot->nas_cpu_valid ||
                          snapshot->nas_memory_valid || snapshot->nas_temperature_valid ||
@@ -1054,7 +1103,6 @@ static bool collect_nas(const char *host, const char *community, app_snapshot_t 
         snapshot->nas_online = true;
         snapshot->nas_last_error[0] = '\0';
     }
-    s_snmp_deadline_us = 0;
     return success;
 }
 
@@ -1068,101 +1116,175 @@ static void set_clock(app_snapshot_t *snapshot)
     snapshot->second = (uint8_t)local_now.tm_sec;
 }
 
+static void publish_event(app_model_event_t event)
+{
+    if (s_snapshot_queue == NULL) {
+        app_snapshot_destroy(event.snapshot);
+        return;
+    }
+    if (xQueueSend(s_snapshot_queue, &event, 0) == pdTRUE) return;
+
+    app_model_event_t dropped = {0};
+    if (xQueueReceive(s_snapshot_queue, &dropped, 0) == pdTRUE) {
+        app_snapshot_destroy(dropped.snapshot);
+    }
+    if (xQueueSend(s_snapshot_queue, &event, 0) != pdTRUE) {
+        app_snapshot_destroy(event.snapshot);
+    }
+}
+
+static void publish_status(app_model_event_kind_t kind, app_monitor_t monitor,
+                           const char *error)
+{
+    app_model_event_t event = {
+        .kind = kind,
+        .monitor = monitor,
+    };
+    copy_text(event.error, sizeof(event.error), error);
+    publish_event(event);
+}
+
+static void publish_collection_failure(app_monitor_t monitor, bool has_snapshot,
+                                       const char *error, TickType_t request_started)
+{
+    if (has_snapshot) {
+        publish_status(APP_MODEL_EVENT_REFRESH_FAILED, monitor, error);
+        return;
+    }
+    const TickType_t timeout = pdMS_TO_TICKS(INITIAL_REQUEST_TIMEOUT_MS);
+    const TickType_t elapsed = xTaskGetTickCount() - request_started;
+    if (elapsed < timeout) vTaskDelay(timeout - elapsed);
+    publish_status(APP_MODEL_EVENT_OFFLINE, monitor, error);
+}
+
+static bool publish_snapshot_clone(const app_snapshot_t *snapshot, app_monitor_t monitor)
+{
+    app_snapshot_t *published = app_snapshot_create();
+    if (published == NULL || !app_snapshot_clone(published, snapshot)) {
+        app_snapshot_destroy(published);
+        return false;
+    }
+    app_model_event_t event = {
+        .kind = APP_MODEL_EVENT_SNAPSHOT,
+        .monitor = monitor,
+        .snapshot = published,
+    };
+    publish_event(event);
+    return true;
+}
+
 static void live_provider_task(void *argument)
 {
     (void)argument;
     static app_snapshot_t snapshot;
-    static app_snapshot_t candidate;
     static char pve_host[32], pve_node[32], token_id[64], token_secret[96], pve_ca[4096];
     static char nas_host[32], community[64];
-    memset(&snapshot, 0, sizeof(snapshot));
+    app_snapshot_init(&snapshot);
+    bool pve_has_snapshot = false;
+    bool nas_has_snapshot = false;
     uint32_t revision = 0;
     ESP_LOGI(TAG, "Live PVE/NAS provider started; active-page polling");
     while (true) {
         provider_control_t control = {
-            .active_monitor = APP_MONITOR_PVE,
+            .active_monitor = APP_MONITOR_NAS,
             .refresh_seconds = DEFAULT_REFRESH_SECONDS,
         };
         (void)xQueuePeek(s_control_queue, &control, 0);
         const TickType_t cycle_started = xTaskGetTickCount();
         load_monitor_settings(pve_host, pve_node, token_id, token_secret, pve_ca,
                                nas_host, community);
-        snapshot.revision = ++revision;
-        snapshot.uptime_seconds = (uint32_t)(esp_timer_get_time() / 1000000ULL);
-        snapshot.wifi_connected = network_manager_is_connected();
-        network_manager_get_ip(snapshot.ip_address, sizeof(snapshot.ip_address));
-        copy_text(snapshot.pve_host, sizeof(snapshot.pve_host), pve_host);
-        copy_text(snapshot.pve_name, sizeof(snapshot.pve_name), pve_node);
-        copy_text(snapshot.nas_host, sizeof(snapshot.nas_host), nas_host);
-        set_clock(&snapshot);
+        const bool active_has_snapshot = control.active_monitor == APP_MONITOR_PVE ?
+            pve_has_snapshot : control.active_monitor == APP_MONITOR_NAS ? nas_has_snapshot : true;
+        if (!active_has_snapshot)
+            publish_status(APP_MODEL_EVENT_LOADING, control.active_monitor, NULL);
+        app_snapshot_t *candidate = app_snapshot_create();
+        const bool cloned = candidate != NULL && app_snapshot_clone(candidate, &snapshot);
+        if (!cloned) {
+            app_snapshot_destroy(candidate);
+            publish_collection_failure(control.active_monitor, active_has_snapshot,
+                                       "内存不足，无法刷新数据", cycle_started);
+        } else {
+            candidate->revision = ++revision;
+            candidate->uptime_seconds = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+            candidate->wifi_connected = network_manager_is_connected();
+            network_manager_get_ip(candidate->ip_address, sizeof(candidate->ip_address));
+            copy_text(candidate->pve_host, sizeof(candidate->pve_host), pve_host);
+            copy_text(candidate->pve_name, sizeof(candidate->pve_name), pve_node);
+            copy_text(candidate->nas_host, sizeof(candidate->nas_host), nas_host);
+            set_clock(candidate);
+        }
 
-        if (control.active_monitor == APP_MONITOR_PVE) {
-            candidate = snapshot;
+        if (cloned && control.active_monitor == APP_MONITOR_PVE) {
             bool pve_ok = false;
-            if (snapshot.wifi_connected) {
+            if (candidate->wifi_connected) {
                 pve_ok = collect_pve(pve_host, pve_node, token_id, token_secret,
-                                     pve_ca, &candidate);
+                                     pve_ca, candidate);
             } else {
-                candidate.pve_online = false;
-                copy_text(candidate.pve_last_error, sizeof(candidate.pve_last_error),
+                candidate->pve_online = false;
+                copy_text(candidate->pve_last_error, sizeof(candidate->pve_last_error),
                           "Wi-Fi 未连接");
             }
             if (pve_ok) {
-                candidate.pve_stale = false;
-                candidate.pve_last_success_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
-                snapshot = candidate;
-                ESP_LOGI(TAG, "PVE refresh succeeded: guests=%" PRIu32,
-                         snapshot.pve_guest_count);
+                candidate->pve_stale = false;
+                candidate->pve_last_success_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
+                app_snapshot_move(&snapshot, candidate);
+                app_snapshot_destroy(candidate);
+                pve_has_snapshot = true;
+                if (!publish_snapshot_clone(&snapshot, APP_MONITOR_PVE)) {
+                    publish_status(APP_MODEL_EVENT_REFRESH_FAILED, APP_MONITOR_PVE,
+                                   "内存不足，无法发布数据");
+                }
+                ESP_LOGI(TAG, "PVE refresh succeeded: guests=%zu", snapshot.pve_guest_count);
             } else {
-                candidate.pve_stale = true;
-                snapshot.pve_online = false;
-                snapshot.pve_configured = candidate.pve_configured;
-                snapshot.pve_stale = snapshot.pve_last_success_ms != 0;
-                copy_text(snapshot.pve_last_error, sizeof(snapshot.pve_last_error),
-                          candidate.pve_last_error);
-                ESP_LOGW(TAG, "PVE refresh failed: %s", snapshot.pve_last_error);
+                publish_collection_failure(APP_MONITOR_PVE, pve_has_snapshot,
+                                           candidate->pve_last_error, cycle_started);
+                ESP_LOGW(TAG, "PVE refresh failed: %s", candidate->pve_last_error);
+                app_snapshot_destroy(candidate);
             }
-        } else if (control.active_monitor == APP_MONITOR_NAS) {
-            candidate = snapshot;
+        } else if (cloned && control.active_monitor == APP_MONITOR_NAS) {
             bool nas_ok = false;
-            if (snapshot.wifi_connected) {
-                nas_ok = collect_nas(nas_host, community, &candidate);
+            if (candidate->wifi_connected) {
+                nas_ok = collect_nas(nas_host, community, candidate);
             } else {
-                candidate.nas_online = false;
-                copy_text(candidate.nas_last_error, sizeof(candidate.nas_last_error),
+                candidate->nas_online = false;
+                copy_text(candidate->nas_last_error, sizeof(candidate->nas_last_error),
                           "Wi-Fi 未连接");
             }
             if (nas_ok) {
-                candidate.nas_stale = false;
-                candidate.nas_last_success_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
-                snapshot = candidate;
+                candidate->nas_stale = false;
+                candidate->nas_last_success_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
+                app_snapshot_move(&snapshot, candidate);
+                app_snapshot_destroy(candidate);
+                nas_has_snapshot = true;
                 uint32_t model_count = 0;
                 uint32_t temperature_count = 0;
-                for (uint32_t i = 0; i < snapshot.nas_disk_count; ++i) {
+                for (size_t i = 0; i < snapshot.nas_disk_count; ++i) {
                     if (snapshot.nas_disks[i].model[0] != '\0') model_count++;
                     if (snapshot.nas_disks[i].temperature_valid) temperature_count++;
                 }
-                ESP_LOGI(TAG, "NAS refresh succeeded: pools=%" PRIu32
-                              " disks=%" PRIu32 " uptime=%s"
+                if (!publish_snapshot_clone(&snapshot, APP_MONITOR_NAS)) {
+                    publish_status(APP_MODEL_EVENT_REFRESH_FAILED, APP_MONITOR_NAS,
+                                   "内存不足，无法发布数据");
+                }
+                ESP_LOGI(TAG, "NAS refresh succeeded: pools=%zu"
+                              " disks=%zu uptime=%s"
                               " models=%" PRIu32 " temperatures=%" PRIu32,
                          snapshot.nas_pool_count, snapshot.nas_disk_count,
                          snapshot.nas_uptime_valid ? "yes" : "no",
                          model_count, temperature_count);
             } else {
-                candidate.nas_stale = true;
-                snapshot.nas_online = false;
-                snapshot.nas_configured = candidate.nas_configured;
-                snapshot.nas_stale = snapshot.nas_last_success_ms != 0;
-                copy_text(snapshot.nas_last_error, sizeof(snapshot.nas_last_error),
-                          candidate.nas_last_error);
-                ESP_LOGW(TAG, "NAS refresh failed: %s", snapshot.nas_last_error);
+                publish_collection_failure(APP_MONITOR_NAS, nas_has_snapshot,
+                                           candidate->nas_last_error, cycle_started);
+                ESP_LOGW(TAG, "NAS refresh failed: %s", candidate->nas_last_error);
+                app_snapshot_destroy(candidate);
             }
+        } else if (cloned) {
+            app_snapshot_destroy(candidate);
         }
         memset(token_id, 0, sizeof(token_id));
         memset(token_secret, 0, sizeof(token_secret));
         memset(pve_ca, 0, sizeof(pve_ca));
         memset(community, 0, sizeof(community));
-        xQueueOverwrite(s_snapshot_queue, &snapshot);
         const TickType_t elapsed = xTaskGetTickCount() - cycle_started;
         const TickType_t interval = pdMS_TO_TICKS((uint32_t)control.refresh_seconds * 1000U);
         const TickType_t wait = elapsed < interval ? interval - elapsed : 0;
@@ -1175,7 +1297,7 @@ void app_model_set_active_monitor(app_monitor_t monitor)
     if (s_control_queue == NULL) return;
     if (monitor > APP_MONITOR_PVE) monitor = APP_MONITOR_NONE;
     provider_control_t control = {
-        .active_monitor = APP_MONITOR_PVE,
+        .active_monitor = APP_MONITOR_NAS,
         .refresh_seconds = DEFAULT_REFRESH_SECONDS,
     };
     (void)xQueuePeek(s_control_queue, &control, 0);
@@ -1188,7 +1310,7 @@ void app_model_set_refresh_seconds(uint8_t seconds)
 {
     if (s_control_queue == NULL || !valid_refresh_seconds(seconds)) return;
     provider_control_t control = {
-        .active_monitor = APP_MONITOR_PVE,
+        .active_monitor = APP_MONITOR_NAS,
         .refresh_seconds = DEFAULT_REFRESH_SECONDS,
     };
     (void)xQueuePeek(s_control_queue, &control, 0);
@@ -1199,7 +1321,7 @@ void app_model_set_refresh_seconds(uint8_t seconds)
 
 QueueHandle_t app_model_start_live_provider(void)
 {
-    s_snapshot_queue = xQueueCreate(1, sizeof(app_snapshot_t));
+    s_snapshot_queue = xQueueCreate(1, sizeof(app_model_event_t));
     if (s_snapshot_queue == NULL) {
         ESP_LOGE(TAG, "Unable to allocate live snapshot queue");
         return NULL;
@@ -1217,7 +1339,7 @@ QueueHandle_t app_model_start_live_provider(void)
         refresh_seconds = DEFAULT_REFRESH_SECONDS;
     }
     provider_control_t control = {
-        .active_monitor = APP_MONITOR_PVE,
+        .active_monitor = APP_MONITOR_NAS,
         .refresh_seconds = refresh_seconds,
     };
     xQueueOverwrite(s_control_queue, &control);

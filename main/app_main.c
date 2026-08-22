@@ -153,21 +153,24 @@ static void ui_task(void *argument)
     ESP_ERROR_CHECK(init_lvgl());
     ESP_ERROR_CHECK(dashboard_ui_create());
 
-    app_snapshot_t snapshot;
+    app_model_event_t event;
     uint32_t update_count = 0;
     while (true) {
-        if (xQueueReceive(snapshot_queue, &snapshot, 0) == pdTRUE) {
-            if (update_count < 3) {
-                ESP_LOGI(TAG, "Applying UI revision=%" PRIu32, snapshot.revision);
+        if (xQueueReceive(snapshot_queue, &event, 0) == pdTRUE) {
+            if (event.kind == APP_MODEL_EVENT_SNAPSHOT && event.snapshot != NULL && update_count < 3) {
+                ESP_LOGI(TAG, "Applying UI revision=%" PRIu32, event.snapshot->revision);
             }
-            dashboard_ui_update(&snapshot);
+            const uint32_t revision = event.snapshot != NULL ? event.snapshot->revision : 0;
+            dashboard_ui_update(&event);
+            app_snapshot_destroy(event.snapshot);
+            event.snapshot = NULL;
             update_count++;
-            if (update_count <= 3) {
-                ESP_LOGI(TAG, "Applied UI revision=%" PRIu32, snapshot.revision);
+            if (revision != 0 && update_count <= 3) {
+                ESP_LOGI(TAG, "Applied UI revision=%" PRIu32, revision);
             }
-            if (update_count % 30 == 0) {
+            if (revision != 0 && update_count % 30 == 0) {
                 ESP_LOGI(TAG, "UI revision=%" PRIu32 " free_internal=%u free_psram=%u",
-                         snapshot.revision,
+                         revision,
                          heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
                          heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
             }

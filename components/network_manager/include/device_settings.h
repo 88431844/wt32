@@ -23,6 +23,7 @@ extern "C" {
 #define DEVICE_KEY_BRIGHTNESS "brightness"
 #define DEVICE_KEY_THEME "theme_id"
 #define DEVICE_KEY_REFRESH "refresh_s"
+#define DEVICE_KEY_HOME_PAGE "home_page"
 
 esp_err_t device_settings_get_string(const char *key, char *out, size_t size);
 esp_err_t device_settings_set_string(const char *key, const char *value);

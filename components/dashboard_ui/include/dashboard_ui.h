@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 esp_err_t dashboard_ui_create(void);
-void dashboard_ui_update(const app_snapshot_t *snapshot);
+void dashboard_ui_update(app_model_event_t *event);
 
 #ifdef __cplusplus
 }
