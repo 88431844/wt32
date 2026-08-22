@@ -154,20 +154,39 @@ class DashboardUiContractTest(unittest.TestCase):
 
         update_pve = UI[UI.index("static void update_pve(void)\n{") : UI.index("static void update_nas(void)\n{")]
         compact_update = " ".join(update_pve.split())
+        online_start = compact_update.index("if (snapshot->pve_online) {")
+        else_marker = "} else {"
+        else_start = compact_update.index(else_marker, online_start)
+        online_branch = compact_update[online_start:else_start]
+        offline_end = compact_update.index("format_percent(buffer", else_start)
+        offline_branch = compact_update[else_start + len(else_marker):offline_end]
         for marker in (
             'lv_label_set_text_fmt(s_ui.pve_name, "name %s", snapshot->pve_name[0] ? snapshot->pve_name : "p330")',
             'lv_label_set_text_fmt(s_ui.pve_version, "version %s", snapshot->pve_version[0] ? snapshot->pve_version : "--")',
             'lv_label_set_text_fmt(s_ui.pve_host, "IP %s", snapshot->pve_host[0] ? snapshot->pve_host : "--")',
         ):
-            self.assertIn(marker, compact_update)
+            self.assertIn(marker, online_branch)
+        self.assertIn("lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GREEN), 0)", online_branch)
         for marker in (
-            "lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GREEN), 0)",
+            "lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GRAY), 0)",
+            'lv_label_set_text(s_ui.pve_version, "--")',
+            'lv_label_set_text(s_ui.pve_host, "--")',
+        ):
+            self.assertNotIn(marker, online_branch)
+        for marker in (
             'lv_label_set_text(s_ui.pve_name, snapshot->pve_configured ? "PVE 离线" : "PVE 未配置")',
             'lv_label_set_text(s_ui.pve_version, "--")',
             'lv_label_set_text(s_ui.pve_host, "--")',
             "lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GRAY), 0)",
         ):
-            self.assertIn(marker, compact_update)
+            self.assertIn(marker, offline_branch)
+        for marker in (
+            "lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GREEN), 0)",
+            'lv_label_set_text_fmt(s_ui.pve_name, "name %s",',
+            'lv_label_set_text_fmt(s_ui.pve_version, "version %s",',
+            'lv_label_set_text_fmt(s_ui.pve_host, "IP %s",',
+        ):
+            self.assertNotIn(marker, offline_branch)
         self.assertNotIn('"pve name:%s version:%s %s 在线"', update_pve)
         self.assertNotIn("在线", update_pve)
 
@@ -181,8 +200,7 @@ class DashboardUiContractTest(unittest.TestCase):
         ):
             self.assertIn(marker, compact_message)
         for field in ("pve_name", "pve_version", "pve_host"):
-            self.assertNotIn(f"lv_obj_set_style_text_color(s_ui.{field}", update_pve)
-            self.assertNotIn(f"lv_obj_set_style_text_color(s_ui.{field}", monitor_message)
+            self.assertNotIn(f"lv_obj_set_style_text_color(s_ui.{field}", UI)
 
         apply_theme = UI[UI.index("static void apply_theme(void)") : UI.index("static void page_event")]
         compact_theme = "".join(apply_theme.split())
