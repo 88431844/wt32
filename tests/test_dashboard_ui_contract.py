@@ -187,5 +187,53 @@ class DashboardUiContractTest(unittest.TestCase):
         ):
             self.assertNotIn(removed, UI)
 
+    def test_pve_vm_list_has_four_aligned_rows_and_vertical_pager(self):
+        for marker in (
+            "#define VM_VISIBLE 4",
+            "vm_name_buttons",
+            "vm_list_previous",
+            "vm_list_next",
+            "vm_list_page",
+            "vm_list_empty",
+            "420, 0",
+            "44, 276",
+            "30 + i * 58",
+        ):
+            self.assertIn(marker, UI)
+        for header in ('"虚拟机"', '"IP"', '"CPU"', '"内存"'):
+            self.assertIn(header, UI)
+        pve_creation = UI[
+            UI.index("static void create_pve_page"):
+            UI.index("static void show_nas_pools")
+        ]
+        self.assertNotIn("vm_row_disk", pve_creation)
+
+    def test_pve_vm_events_route_name_detail_background_node_and_detail_list(self):
+        for marker in (
+            "pve_vm_list_button_event",
+            "vm_name_event",
+            "vm_list_return_event",
+            "vm_detail_return_event",
+            "vm_list_page_event",
+            "lv_event_stop_bubbling(event)",
+        ):
+            self.assertIn(marker, UI)
+        self.assertIn("show_vm_detail", UI)
+        self.assertIn("show_pve_node", UI)
+        self.assertIn("show_pve_vm_list", UI)
+
+    def test_pve_snapshot_changes_clamp_list_and_detail_state(self):
+        update = UI[
+            UI.index("static void update_pve(void)\n{"):
+            UI.index("static void update_nas(void)\n{")
+        ]
+        for marker in (
+            "last_page_offset",
+            "s_ui.vm_list_offset > last_page_offset",
+            "s_ui.selected_vm_index >= (int)snapshot->pve_guest_count",
+            "show_pve_vm_list()",
+        ):
+            self.assertIn(marker, update)
+
 if __name__ == "__main__":
     unittest.main()

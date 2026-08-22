@@ -164,14 +164,18 @@ typedef struct {
     lv_obj_t *vm_header_ip;
     lv_obj_t *vm_header_cpu;
     lv_obj_t *vm_header_memory;
-    lv_obj_t *vm_header_disk;
+    lv_obj_t *vm_list_pager;
+    lv_obj_t *vm_list_previous;
+    lv_obj_t *vm_list_next;
+    lv_obj_t *vm_list_page;
+    lv_obj_t *vm_list_empty;
     lv_obj_t *vm_rows[VM_VISIBLE];
+    lv_obj_t *vm_name_buttons[VM_VISIBLE];
     lv_obj_t *vm_row_labels[VM_VISIBLE];
     lv_obj_t *vm_row_dots[VM_VISIBLE];
     lv_obj_t *vm_row_ips[VM_VISIBLE];
     lv_obj_t *vm_row_cpu[VM_VISIBLE];
     lv_obj_t *vm_row_memory[VM_VISIBLE];
-    lv_obj_t *vm_row_disk[VM_VISIBLE];
     int vm_list_offset;
     int selected_vm_index;
     lv_obj_t *nas_overview;
@@ -248,7 +252,7 @@ static void update_nas_disks(void);
 static void update_vm_detail(void);
 static void show_pve_node(void);
 static void show_pve_vm_list(void);
-static void vm_row_event(lv_event_t *event);
+static void vm_name_event(lv_event_t *event);
 static void set_rotation_button_state(void);
 static void set_refresh_button_state(void);
 static void set_homepage_button_state(void);
@@ -612,7 +616,7 @@ static void update_vm_detail(void)
     }
 
     const pve_guest_t *guest = &s_ui.snapshot.pve_guests[s_ui.selected_vm_index];
-    char value[96], used[24], total[24];
+    char value[96], used[24], total[24], uptime[32];
     lv_label_set_text_fmt(s_ui.vm_detail_title, "VM %" PRIu32 "  %s", guest->vmid, guest->name);
     lv_label_set_text(s_ui.vm_detail_status, guest->running ? "运行中" : "已停止");
     lv_obj_set_style_text_color(s_ui.vm_detail_status,
@@ -637,7 +641,8 @@ static void update_vm_detail(void)
         format_bytes(total, sizeof(total), guest->disk_total);
         lv_label_set_text_fmt(s_ui.vm_detail_disk, "磁盘  %s / %s", used, total);
     }
-    lv_label_set_text_fmt(s_ui.vm_detail_uptime, "运行时间  %" PRIu32 " 秒", guest->uptime_seconds);
+    format_uptime(uptime, sizeof(uptime), guest->uptime_seconds);
+    lv_label_set_text_fmt(s_ui.vm_detail_uptime, "运行时间  %s", uptime);
     lv_label_set_text(s_ui.vm_detail_agent,
                       guest->guest_agent ? "Guest Agent  在线" : "Guest Agent  未报告");
     lv_obj_set_style_text_color(s_ui.vm_detail_agent,
@@ -657,21 +662,41 @@ static void pve_vm_list_button_event(lv_event_t *event)
     if (lv_event_get_code(event) == LV_EVENT_CLICKED) show_pve_vm_list();
 }
 
-static void vm_row_event(lv_event_t *event)
+static void vm_name_event(lv_event_t *event)
 {
-    if (lv_event_get_code(event) == LV_EVENT_CLICKED)
-        show_vm_detail((size_t)(intptr_t)lv_event_get_user_data(event));
+    if (lv_event_get_code(event) != LV_EVENT_CLICKED) return;
+    lv_event_stop_bubbling(event);
+    show_vm_detail((size_t)(intptr_t)lv_event_get_user_data(event));
 }
 
-static void vm_scroll_event(lv_event_t *event)
+static void vm_list_return_event(lv_event_t *event)
 {
+    if (lv_event_get_code(event) == LV_EVENT_CLICKED) show_pve_node();
+}
+
+static void vm_detail_return_event(lv_event_t *event)
+{
+    if (lv_event_get_code(event) != LV_EVENT_CLICKED) return;
+    lv_event_stop_bubbling(event);
+    show_pve_vm_list();
+}
+
+static void vm_list_page_event(lv_event_t *event)
+{
+    if (lv_event_get_code(event) != LV_EVENT_CLICKED) return;
+    lv_event_stop_bubbling(event);
     const int direction = (int)(intptr_t)lv_event_get_user_data(event);
-    const int max_offset = s_ui.snapshot.pve_guest_count > VM_VISIBLE ?
-                           (int)s_ui.snapshot.pve_guest_count - VM_VISIBLE : 0;
     if (direction < 0 && s_ui.vm_list_offset > 0) s_ui.vm_list_offset -= VM_VISIBLE;
-    if (direction > 0 && s_ui.vm_list_offset < max_offset) s_ui.vm_list_offset += VM_VISIBLE;
-    if (s_ui.vm_list_offset > max_offset) s_ui.vm_list_offset = max_offset;
+    if (direction > 0 &&
+        s_ui.vm_list_offset + VM_VISIBLE < (int)s_ui.snapshot.pve_guest_count)
+        s_ui.vm_list_offset += VM_VISIBLE;
     update_pve();
+}
+
+static void vm_list_pager_event(lv_event_t *event)
+{
+    if (lv_event_get_code(event) == LV_EVENT_CLICKED)
+        lv_event_stop_bubbling(event);
 }
 
 static void create_pve_page(lv_obj_t *page)
@@ -743,39 +768,82 @@ static void create_pve_page(lv_obj_t *page)
                                           8, PVE_VM_BUTTON_Y, 464, 44,
                                           pve_vm_list_button_event, NULL);
 
-    s_ui.pve_vm_list = lv_obj_create(page);
-    lv_obj_remove_style_all(s_ui.pve_vm_list);
-    lv_obj_set_pos(s_ui.pve_vm_list, 0, 0);
-    lv_obj_set_size(s_ui.pve_vm_list, WT32_LCD_WIDTH, 288);
-    lv_obj_clear_flag(s_ui.pve_vm_list, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t *list = make_surface(s_ui.pve_vm_list, 8, 4, 464, 276);
-    s_ui.vm_title = make_label(list, "虚拟机 0/0 运行", 10, 6, 108, &app_font_14, COLOR_TEXT);
-    s_ui.vm_header_ip = make_label(list, "IP", 120, 6, 108, &app_font_14, COLOR_MUTED);
-    s_ui.vm_header_cpu = make_label(list, "CPU", 230, 6, 38, &app_font_14, COLOR_MUTED);
-    s_ui.vm_header_memory = make_label(list, "内存", 270, 6, 72, &app_font_14, COLOR_MUTED);
-    s_ui.vm_header_disk = make_label(list, "磁盘", 344, 6, 82, &app_font_14, COLOR_MUTED);
-    make_button(list, "^", 436, 0, 28, 138, vm_scroll_event, (void *)(intptr_t)-1);
-    make_button(list, "v", 436, 138, 28, 138, vm_scroll_event, (void *)(intptr_t)1);
+    s_ui.pve_vm_list = make_surface(page, 8, 4, 464, 276);
+    lv_obj_add_flag(s_ui.pve_vm_list, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_ui.pve_vm_list, vm_list_return_event, LV_EVENT_CLICKED, NULL);
+    s_ui.vm_title = make_label(s_ui.pve_vm_list, "虚拟机", 10, 6, 158,
+                               &app_font_14, COLOR_TEXT);
+    s_ui.vm_header_ip = make_label(s_ui.pve_vm_list, "IP", 170, 6, 112,
+                                   &app_font_14, COLOR_MUTED);
+    s_ui.vm_header_cpu = make_label(s_ui.pve_vm_list, "CPU", 284, 6, 46,
+                                    &app_font_14, COLOR_MUTED);
+    s_ui.vm_header_memory = make_label(s_ui.pve_vm_list, "内存", 332, 6, 84,
+                                       &app_font_14, COLOR_MUTED);
+    s_ui.vm_list_empty = make_label(s_ui.pve_vm_list, "未发现虚拟机", 12, 126, 396,
+                                    &app_font_14, COLOR_MUTED);
+    lv_obj_set_style_text_align(s_ui.vm_list_empty, LV_TEXT_ALIGN_CENTER, 0);
+    s_ui.vm_list_pager = lv_obj_create(s_ui.pve_vm_list);
+    lv_obj_remove_style_all(s_ui.vm_list_pager);
+    lv_obj_set_pos(s_ui.vm_list_pager, 420, 0);
+    lv_obj_set_size(s_ui.vm_list_pager, 44, 276);
+    lv_obj_clear_flag(s_ui.vm_list_pager, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_ui.vm_list_pager, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(s_ui.vm_list_pager, LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_add_event_cb(s_ui.vm_list_pager, vm_list_pager_event, LV_EVENT_CLICKED, NULL);
+    s_ui.vm_list_previous = make_button(s_ui.vm_list_pager, "^", 4, 0, 36, 102,
+                                        vm_list_page_event, (void *)(intptr_t)-1);
+    s_ui.vm_list_page = make_label(s_ui.vm_list_pager, "1/1", 4, 125, 36,
+                                   &app_font_14, COLOR_MUTED);
+    lv_obj_set_style_text_align(s_ui.vm_list_page, LV_TEXT_ALIGN_CENTER, 0);
+    s_ui.vm_list_next = make_button(s_ui.vm_list_pager, "v", 4, 154, 36, 122,
+                                    vm_list_page_event, (void *)(intptr_t)1);
+    lv_obj_add_flag(s_ui.vm_list_previous, LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_add_flag(s_ui.vm_list_next, LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_set_style_opa(s_ui.vm_list_previous, LV_OPA_30, LV_STATE_DISABLED);
+    lv_obj_set_style_opa(s_ui.vm_list_next, LV_OPA_30, LV_STATE_DISABLED);
     for (int i = 0; i < VM_VISIBLE; ++i) {
-        const int y = 34 + i * 48;
-        s_ui.vm_rows[i] = lv_btn_create(list);
+        const int y = 30 + i * 58;
+        s_ui.vm_rows[i] = lv_obj_create(s_ui.pve_vm_list);
         lv_obj_remove_style_all(s_ui.vm_rows[i]);
         lv_obj_add_style(s_ui.vm_rows[i], &s_muted_button_style, 0);
-        lv_obj_set_pos(s_ui.vm_rows[i], 10, y);
-        lv_obj_set_size(s_ui.vm_rows[i], 420, 46);
-        lv_obj_add_event_cb(s_ui.vm_rows[i], vm_row_event, LV_EVENT_CLICKED, (void *)(intptr_t)i);
-        s_ui.vm_row_dots[i] = make_status_dot(s_ui.vm_rows[i], 5, 19, 8, COLOR_GRAY);
-        s_ui.vm_row_labels[i] = make_label(s_ui.vm_rows[i], "", 17, 14, 92, &app_font_14, COLOR_TEXT);
-        s_ui.vm_row_ips[i] = make_label(s_ui.vm_rows[i], "--", 110, 14, 108, &app_font_14, COLOR_MUTED);
-        s_ui.vm_row_cpu[i] = make_label(s_ui.vm_rows[i], "--", 220, 14, 38, &app_font_14, COLOR_MUTED);
-        s_ui.vm_row_memory[i] = make_label(s_ui.vm_rows[i], "--", 260, 14, 72, &app_font_14, COLOR_MUTED);
-        s_ui.vm_row_disk[i] = make_label(s_ui.vm_rows[i], "--", 334, 14, 82, &app_font_14, COLOR_MUTED);
+        lv_obj_set_pos(s_ui.vm_rows[i], 0, y);
+        lv_obj_set_size(s_ui.vm_rows[i], 420, 58);
+        lv_obj_clear_flag(s_ui.vm_rows[i], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(s_ui.vm_rows[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(s_ui.vm_rows[i], vm_list_return_event, LV_EVENT_CLICKED, NULL);
+        s_ui.vm_name_buttons[i] = lv_btn_create(s_ui.vm_rows[i]);
+        lv_obj_remove_style_all(s_ui.vm_name_buttons[i]);
+        lv_obj_add_style(s_ui.vm_name_buttons[i], &s_muted_button_style, 0);
+        lv_obj_set_pos(s_ui.vm_name_buttons[i], 4, 4);
+        lv_obj_set_size(s_ui.vm_name_buttons[i], 162, 50);
+        lv_obj_add_flag(s_ui.vm_name_buttons[i], LV_OBJ_FLAG_EVENT_BUBBLE);
+        lv_obj_add_event_cb(s_ui.vm_name_buttons[i], vm_name_event, LV_EVENT_CLICKED,
+                            (void *)(intptr_t)i);
+        s_ui.vm_row_dots[i] = make_status_dot(s_ui.vm_name_buttons[i], 5, 21, 8,
+                                               COLOR_GRAY);
+        lv_obj_clear_flag(s_ui.vm_row_dots[i], LV_OBJ_FLAG_CLICKABLE);
+        s_ui.vm_row_labels[i] = make_label(s_ui.vm_name_buttons[i], "", 17, 16, 124,
+                                            &app_font_14, COLOR_TEXT);
+        make_label(s_ui.vm_name_buttons[i], ">", 142, 16, 14, &app_font_14, COLOR_MUTED);
+        s_ui.vm_row_ips[i] = make_label(s_ui.vm_rows[i], "--", 170, 20, 112,
+                                        &app_font_14, COLOR_MUTED);
+        s_ui.vm_row_cpu[i] = make_label(s_ui.vm_rows[i], "--", 284, 20, 46,
+                                        &app_font_14, COLOR_MUTED);
+        s_ui.vm_row_memory[i] = make_label(s_ui.vm_rows[i], "--", 332, 20, 84,
+                                           &app_font_14, COLOR_MUTED);
+        set_hidden(s_ui.vm_rows[i], true);
     }
 
     s_ui.vm_detail = make_surface(page, 8, 4, 464, 276);
-    s_ui.vm_detail_title = make_label(s_ui.vm_detail, "VM --", 18, 16, 420,
+    lv_obj_add_flag(s_ui.vm_detail, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_ui.vm_detail, vm_detail_return_event, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *vm_detail_back = make_button(s_ui.vm_detail, "<", 8, 8, 30, 30,
+                                           vm_detail_return_event, NULL);
+    lv_obj_add_flag(vm_detail_back, LV_OBJ_FLAG_EVENT_BUBBLE);
+    s_ui.vm_detail_title = make_label(s_ui.vm_detail, "VM --", 48, 14, 398,
                                       &app_font_18, COLOR_TEXT);
     s_ui.vm_detail_status_dot = make_status_dot(s_ui.vm_detail, 18, 55, 8, COLOR_GRAY);
+    lv_obj_clear_flag(s_ui.vm_detail_status_dot, LV_OBJ_FLAG_CLICKABLE);
     s_ui.vm_detail_status = make_label(s_ui.vm_detail, "--", 32, 50, 180,
                                        &app_font_14, COLOR_MUTED);
     s_ui.vm_detail_ip = make_label(s_ui.vm_detail, "IP  --", 18, 86, 205,
@@ -1600,9 +1668,28 @@ static void update_pve(void)
                           snapshot->pve_running_count, snapshot->pve_guest_count);
     if (s_ui.selected_vm_index >= (int)snapshot->pve_guest_count &&
         s_ui.pve_view == PVE_VIEW_VM_DETAIL) show_pve_vm_list();
-    const int max_offset = snapshot->pve_guest_count > VM_VISIBLE ?
-                           (int)snapshot->pve_guest_count - VM_VISIBLE : 0;
-    if (s_ui.vm_list_offset > max_offset) s_ui.vm_list_offset = max_offset;
+    const size_t last_page_offset = snapshot->pve_guest_count > VM_VISIBLE ?
+        ((snapshot->pve_guest_count - 1) / VM_VISIBLE) * VM_VISIBLE : 0;
+    if ((size_t)s_ui.vm_list_offset > last_page_offset)
+        s_ui.vm_list_offset = (int)last_page_offset;
+    const size_t page_count = snapshot->pve_guest_count > 0 ?
+        (snapshot->pve_guest_count + VM_VISIBLE - 1) / VM_VISIBLE : 1;
+    const bool paged = snapshot->pve_guest_count > VM_VISIBLE;
+    set_hidden(s_ui.vm_list_pager, !paged);
+    lv_label_set_text_fmt(s_ui.vm_list_page, "%d/%zu",
+                          s_ui.vm_list_offset / VM_VISIBLE + 1, page_count);
+    if (s_ui.vm_list_offset == 0)
+        lv_obj_add_state(s_ui.vm_list_previous, LV_STATE_DISABLED);
+    else
+        lv_obj_clear_state(s_ui.vm_list_previous, LV_STATE_DISABLED);
+    if (s_ui.vm_list_offset + VM_VISIBLE >= (int)snapshot->pve_guest_count)
+        lv_obj_add_state(s_ui.vm_list_next, LV_STATE_DISABLED);
+    else
+        lv_obj_clear_state(s_ui.vm_list_next, LV_STATE_DISABLED);
+    set_hidden(s_ui.vm_list_empty, snapshot->pve_guest_count > 0);
+    if (snapshot->pve_guest_count == 0)
+        lv_label_set_text(s_ui.vm_list_empty,
+                          snapshot->pve_online ? "未发现虚拟机" : "PVE 离线");
     for (int i = 0; i < VM_VISIBLE; ++i) {
         const int index = s_ui.vm_list_offset + i;
         const bool visible = index < (int)snapshot->pve_guest_count;
@@ -1613,7 +1700,7 @@ static void update_pve(void)
         lv_label_set_text_fmt(s_ui.vm_row_labels[i], "%" PRIu32 " %s", guest->vmid, guest->name);
         lv_label_set_text(s_ui.vm_row_ips[i], guest->ipv4_address[0] != '\0' ?
                           guest->ipv4_address : "--");
-        char cpu[16], capacity[52], disk_used[24], disk_total[24];
+        char cpu[16], capacity[52];
         format_percent(cpu, sizeof(cpu), guest->cpu_percent);
         lv_label_set_text(s_ui.vm_row_cpu[i], cpu);
         if (guest->memory_total == 0) {
@@ -1624,16 +1711,9 @@ static void update_pve(void)
             snprintf(capacity, sizeof(capacity), "%s/%s", used, total);
             lv_label_set_text(s_ui.vm_row_memory[i], capacity);
         }
-        if (guest->disk_total == 0) {
-            lv_label_set_text(s_ui.vm_row_disk[i], "--");
-        } else {
-            format_bytes(disk_used, sizeof(disk_used), guest->disk_used);
-            format_bytes(disk_total, sizeof(disk_total), guest->disk_total);
-            snprintf(capacity, sizeof(capacity), "%s/%s", disk_used, disk_total);
-            lv_label_set_text(s_ui.vm_row_disk[i], capacity);
-        }
-        lv_obj_remove_event_cb(s_ui.vm_rows[i], vm_row_event);
-        lv_obj_add_event_cb(s_ui.vm_rows[i], vm_row_event, LV_EVENT_CLICKED, (void *)(intptr_t)index);
+        lv_obj_remove_event_cb(s_ui.vm_name_buttons[i], vm_name_event);
+        lv_obj_add_event_cb(s_ui.vm_name_buttons[i], vm_name_event, LV_EVENT_CLICKED,
+                            (void *)(intptr_t)index);
     }
     if (s_ui.pve_view == PVE_VIEW_VM_DETAIL && s_ui.selected_vm_index >= 0)
         update_vm_detail();
