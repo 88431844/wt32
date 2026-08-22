@@ -322,7 +322,11 @@ static void parse_pve_node(const cJSON *root, app_snapshot_t *snapshot)
             snapshot->pve_load[i] = strtof(entry->valuestring, NULL);
         else snapshot->pve_load[i] = 0.0f;
     }
-    snapshot->pve_cpu_cores = (uint32_t)json_u64(cJSON_GetObjectItem(data, "cpuinfo"), "cpus");
+    const cJSON *cpuinfo = cJSON_GetObjectItem(data, "cpuinfo");
+    snapshot->pve_cpu_cores = (uint32_t)json_u64(cpuinfo, "cpus");
+    snapshot->pve_uptime_seconds = (uint32_t)json_u64(data, "uptime");
+    copy_text(snapshot->pve_cpu_model, sizeof(snapshot->pve_cpu_model),
+              json_string(cpuinfo, "model"));
     const cJSON *memory = cJSON_GetObjectItem(data, "memory");
     snapshot->pve_memory_used = json_u64(memory, "used");
     snapshot->pve_memory_total = json_u64(memory, "total");

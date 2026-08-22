@@ -45,6 +45,26 @@ class MonitorMigrationContractTest(unittest.TestCase):
         self.assertIn("MBEDTLS_ERR_SSL_WANT_READ", PROVIDER)
         self.assertIn("read_deadline_us", PROVIDER)
 
+    def test_pve_node_status_collects_uptime_and_cpu_model(self):
+        for declaration in (
+            "uint32_t pve_uptime_seconds;",
+            "char pve_cpu_model[APP_TEXT_LARGE];",
+        ):
+            self.assertIn(declaration, MODEL)
+
+        parser = PROVIDER[
+            PROVIDER.index("static void parse_pve_node"):
+            PROVIDER.index("static bool parse_pve_guests")
+        ]
+        for marker in (
+            'json_u64(data, "uptime")',
+            'json_string(cpuinfo, "model")',
+            "snapshot->pve_uptime_seconds",
+            "snapshot->pve_cpu_model",
+        ):
+            self.assertIn(marker, parser)
+        self.assertNotIn("temperature", parser.lower())
+
     def test_pve_guest_network_interfaces_are_requested_with_get(self):
         guest_network_collection = PROVIDER[
             PROVIDER.index('"/api2/json/nodes/%s/qemu/%" PRIu32 "/agent/network-get-interfaces"'):

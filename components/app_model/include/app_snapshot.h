@@ -76,6 +76,8 @@ typedef struct {
     uint64_t pve_storage_total;
     float pve_load[3];
     uint32_t pve_cpu_cores;
+    uint32_t pve_uptime_seconds;
+    char pve_cpu_model[APP_TEXT_LARGE];
     size_t pve_guest_count;
     size_t pve_guest_capacity;
     uint32_t pve_running_count;
