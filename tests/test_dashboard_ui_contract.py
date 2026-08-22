@@ -100,16 +100,45 @@ class DashboardUiContractTest(unittest.TestCase):
         self.assertIn("app_model_set_refresh_seconds", self.source)
         self.assertIn("app_model_set_active_monitor", self.source)
 
-    def test_nas_layout_has_pool_navigation_overview_and_detail(self) -> None:
+    def test_nas_layout_toggles_between_pool_and_disk_lists(self) -> None:
         for field in (
-            "nas_overview_button", "nas_pool_buttons", "nas_pool_button_dots",
-            "nas_overview", "nas_detail", "selected_nas_pool_index",
-            "show_nas_overview", "show_nas_detail", "nas_disk_rows",
+            "nas_overview", "nas_detail", "nas_disks_visible", "show_nas_pools",
+            "show_nas_disks", "nas_disk_rows", "nas_pool_list_event",
+            "nas_disk_list_event",
         ):
             self.assertIn(field, self.source)
-        self.assertIn('make_button(page, "NAS 总览"', self.source)
+        for field in (
+            "nas_overview_button", "nas_pool_buttons", "nas_pool_button_labels",
+            "nas_pool_button_dots", "selected_nas_pool_index", "show_nas_overview",
+            "show_nas_detail",
+        ):
+            self.assertNotIn(field, self.source)
+        self.assertNotIn('make_button(page, "NAS 总览"', self.source)
         self.assertIn('"存储池%d"', self.source)
         self.assertIn('"NAS 物理盘（未按池映射）"', self.source)
+
+    def test_nas_list_surfaces_and_rows_toggle_views(self) -> None:
+        self.assertIn(
+            "lv_obj_add_event_cb(s_ui.nas_overview, nas_pool_list_event",
+            self.source,
+        )
+        self.assertIn(
+            "lv_obj_add_event_cb(s_ui.nas_rows[i], nas_pool_list_event",
+            self.source,
+        )
+        self.assertIn(
+            "lv_obj_add_event_cb(s_ui.nas_detail, nas_disk_list_event",
+            self.source,
+        )
+        self.assertIn(
+            "lv_obj_add_event_cb(row, nas_disk_list_event",
+            self.source,
+        )
+
+    def test_nas_disk_table_omits_capacity(self) -> None:
+        self.assertNotIn("nas_disk_capacities", self.source)
+        self.assertNotIn("disk->capacity_valid", self.source)
+        self.assertNotIn('make_label(s_ui.nas_detail, "容量"', self.source)
 
     def test_nas_footer_is_two_rows_and_includes_ip_uptime_and_network(self) -> None:
         self.assertIn("#define NAS_METRICS_HEIGHT 36", self.source)
@@ -160,7 +189,6 @@ class DashboardUiContractTest(unittest.TestCase):
         self.assertIn('snapshot->nas_stale ? "离线 · 缓存" : "离线"', self.source)
         self.assertIn('lv_label_set_text(s_ui.nas_row_values[i], "--/-- 剩--")', self.source)
         self.assertIn("lv_bar_set_value(s_ui.nas_row_bars[i], 0, LV_ANIM_OFF)", self.source)
-        self.assertIn('lv_label_set_text(s_ui.nas_detail_capacity, "--")', self.source)
         self.assertIn('snapshot->nas_stale ? "NAS 离线 · 缓存" : "NAS 离线"', self.source)
         for placeholder in ('"CPU --"', '"内存 --"', '"温度 --"'):
             self.assertIn(placeholder, self.source)
@@ -189,6 +217,11 @@ class DashboardUiContractTest(unittest.TestCase):
         self.assertIn("nas_disk_page_event", self.source)
         self.assertIn("s_ui.nas_disk_offset + i", self.source)
         self.assertIn("APP_MAX_NAS_DISKS - NAS_DISK_VISIBLE", self.source)
+        self.assertIn('make_button(s_ui.nas_detail, "^", 428, 0, 28, 98', self.source)
+        self.assertIn('make_button(s_ui.nas_detail, "v", 428, 130, 28, 106', self.source)
+        self.assertIn('make_label(s_ui.nas_detail, "1/1", 428, 106, 28', self.source)
+        self.assertNotIn('make_button(s_ui.nas_detail, "<"', self.source)
+        self.assertNotIn('make_button(s_ui.nas_detail, ">"', self.source)
         self.assertIn(
             "((snapshot_disk_count - 1) / NAS_DISK_VISIBLE) * NAS_DISK_VISIBLE",
             self.source,

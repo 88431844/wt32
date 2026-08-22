@@ -143,10 +143,6 @@ typedef struct {
     int vm_nav_offset;
     int vm_list_offset;
     int selected_vm_index;
-    lv_obj_t *nas_overview_button;
-    lv_obj_t *nas_pool_buttons[NAS_VISIBLE];
-    lv_obj_t *nas_pool_button_labels[NAS_VISIBLE];
-    lv_obj_t *nas_pool_button_dots[NAS_VISIBLE];
     lv_obj_t *nas_overview;
     lv_obj_t *nas_overview_message;
     lv_obj_t *nas_rows[NAS_VISIBLE];
@@ -156,9 +152,6 @@ typedef struct {
     lv_obj_t *nas_row_values[NAS_VISIBLE];
     lv_obj_t *nas_row_bars[NAS_VISIBLE];
     lv_obj_t *nas_detail;
-    lv_obj_t *nas_detail_title;
-    lv_obj_t *nas_detail_status_dot;
-    lv_obj_t *nas_detail_capacity;
     lv_obj_t *nas_disk_empty;
     lv_obj_t *nas_disk_previous;
     lv_obj_t *nas_disk_next;
@@ -168,7 +161,6 @@ typedef struct {
     lv_obj_t *nas_disk_ids[NAS_DISK_VISIBLE];
     lv_obj_t *nas_disk_models[NAS_DISK_VISIBLE];
     lv_obj_t *nas_disk_temperatures[NAS_DISK_VISIBLE];
-    lv_obj_t *nas_disk_capacities[NAS_DISK_VISIBLE];
     lv_obj_t *nas_cpu_value;
     lv_obj_t *nas_memory_value;
     lv_obj_t *nas_temperature_value;
@@ -177,7 +169,7 @@ typedef struct {
     lv_obj_t *nas_download_value;
     lv_obj_t *nas_ip_value;
     lv_obj_t *nas_uptime_value;
-    int selected_nas_pool_index;
+    bool nas_disks_visible;
     int nas_disk_offset;
     lv_obj_t *wifi_dropdown;
     lv_obj_t *wifi_status;
@@ -210,7 +202,7 @@ static lv_style_t s_text_styles[4];
 
 static void update_pve(void);
 static void update_nas(void);
-static void update_nas_detail(void);
+static void update_nas_disks(void);
 static void update_vm_detail(void);
 static void update_vm_navigation(void);
 static void vm_row_event(lv_event_t *event);
@@ -677,43 +669,32 @@ static void create_pve_page(lv_obj_t *page)
     set_hidden(s_ui.vm_detail, true);
 }
 
-static void show_nas_overview(void)
+static void show_nas_pools(void)
 {
-    s_ui.selected_nas_pool_index = -1;
+    s_ui.nas_disks_visible = false;
     set_hidden(s_ui.nas_overview, false);
     set_hidden(s_ui.nas_detail, true);
-    set_button_selected(s_ui.nas_overview_button, true);
-    for (int i = 0; i < NAS_VISIBLE; ++i)
-        set_button_selected(s_ui.nas_pool_buttons[i], false);
 }
 
-static void show_nas_detail(size_t index)
+static void show_nas_disks(void)
 {
-    if (index >= s_ui.snapshot.nas_pool_count || index >= NAS_VISIBLE) return;
-    s_ui.selected_nas_pool_index = (int)index;
+    s_ui.nas_disks_visible = true;
     set_hidden(s_ui.nas_overview, true);
     set_hidden(s_ui.nas_detail, false);
-    set_button_selected(s_ui.nas_overview_button, false);
-    for (int i = 0; i < NAS_VISIBLE; ++i)
-        set_button_selected(s_ui.nas_pool_buttons[i], i == (int)index);
-    update_nas_detail();
+    update_nas_disks();
 }
 
-static void nas_overview_event(lv_event_t *event)
+static void nas_pool_list_event(lv_event_t *event)
 {
-    if (lv_event_get_code(event) == LV_EVENT_CLICKED) show_nas_overview();
+    if (lv_event_get_code(event) == LV_EVENT_CLICKED) show_nas_disks();
 }
 
-static void nas_pool_event(lv_event_t *event)
+static void nas_disk_list_event(lv_event_t *event)
 {
     if (lv_event_get_code(event) != LV_EVENT_CLICKED) return;
-    show_nas_detail((size_t)(uintptr_t)lv_event_get_user_data(event));
-}
-
-static void nas_row_event(lv_event_t *event)
-{
-    if (lv_event_get_code(event) != LV_EVENT_CLICKED) return;
-    show_nas_detail((size_t)(uintptr_t)lv_event_get_user_data(event));
+    lv_obj_t *target = lv_event_get_target(event);
+    if (target == s_ui.nas_disk_previous || target == s_ui.nas_disk_next) return;
+    show_nas_pools();
 }
 
 static void nas_disk_page_event(lv_event_t *event)
@@ -729,28 +710,15 @@ static void nas_disk_page_event(lv_event_t *event)
                s_ui.nas_disk_offset <= APP_MAX_NAS_DISKS - NAS_DISK_VISIBLE) {
         s_ui.nas_disk_offset += NAS_DISK_VISIBLE;
     }
-    update_nas_detail();
+    update_nas_disks();
 }
 
-static void update_nas_detail(void)
+static void update_nas_disks(void)
 {
-    if (s_ui.selected_nas_pool_index < 0 ||
-        s_ui.selected_nas_pool_index >= (int)s_ui.snapshot.nas_pool_count) {
-        show_nas_overview();
-        return;
-    }
-
     const app_snapshot_t *snapshot = &s_ui.snapshot;
-    const nas_pool_t *pool = &snapshot->nas_pools[s_ui.selected_nas_pool_index];
     const bool nas_live = snapshot->nas_online && !snapshot->nas_stale;
-    const bool pool_healthy = nas_live && pool->healthy;
-    char used[20], total[20], free_space[20], value[96];
-    lv_label_set_text_fmt(s_ui.nas_detail_title, "存储池%d",
-                          s_ui.selected_nas_pool_index + 1);
-    lv_obj_set_style_bg_color(s_ui.nas_detail_status_dot,
-                              color(pool_healthy ? COLOR_GREEN : COLOR_RED), 0);
+    char value[96];
     if (!nas_live) {
-        lv_label_set_text(s_ui.nas_detail_capacity, "--");
         lv_label_set_text(s_ui.nas_disk_empty,
                           snapshot->nas_stale ? "NAS 离线 · 缓存" : "NAS 离线");
         set_hidden(s_ui.nas_disk_empty, false);
@@ -761,12 +729,6 @@ static void update_nas_detail(void)
         for (int i = 0; i < NAS_DISK_VISIBLE; ++i) set_hidden(s_ui.nas_disk_rows[i], true);
         return;
     }
-
-    format_capacity(used, sizeof(used), pool->used_bytes);
-    format_capacity(total, sizeof(total), pool->total_bytes);
-    format_capacity(free_space, sizeof(free_space), pool->free_bytes);
-    snprintf(value, sizeof(value), "已用%s / 总计%s / 剩余%s", used, total, free_space);
-    lv_label_set_text(s_ui.nas_detail_capacity, value);
 
     const int snapshot_disk_count = snapshot->nas_disk_count > APP_MAX_NAS_DISKS ?
                                     APP_MAX_NAS_DISKS : (int)snapshot->nas_disk_count;
@@ -802,40 +764,18 @@ static void update_nas_detail(void)
         } else {
             lv_label_set_text(s_ui.nas_disk_temperatures[i], "--");
         }
-        if (disk->capacity_valid) {
-            format_capacity(value, sizeof(value), disk->capacity_bytes);
-            lv_label_set_text(s_ui.nas_disk_capacities[i], value);
-        } else {
-            lv_label_set_text(s_ui.nas_disk_capacities[i], "--");
-        }
     }
 }
 
 static void create_nas_page(lv_obj_t *page)
 {
-    s_ui.nas_overview_button = make_button(page, "NAS 总览", 8, 4, 94, 24,
-                                            nas_overview_event, NULL);
-    for (int i = 0; i < NAS_VISIBLE; ++i) {
-        const int x = 106 + i * 91;
-        s_ui.nas_pool_buttons[i] = lv_btn_create(page);
-        lv_obj_remove_style_all(s_ui.nas_pool_buttons[i]);
-        lv_obj_add_style(s_ui.nas_pool_buttons[i], &s_button_style, 0);
-        lv_obj_set_pos(s_ui.nas_pool_buttons[i], x, 4);
-        lv_obj_set_size(s_ui.nas_pool_buttons[i], 88, 24);
-        lv_obj_add_event_cb(s_ui.nas_pool_buttons[i], nas_pool_event,
-                            LV_EVENT_CLICKED, (void *)(uintptr_t)i);
-        s_ui.nas_pool_button_labels[i] = make_label(s_ui.nas_pool_buttons[i], "", 17, 4,
-                                                     68, &app_font_14, COLOR_TEXT);
-        s_ui.nas_pool_button_dots[i] = make_status_dot(s_ui.nas_pool_buttons[i],
-                                                        6, 8, 8, COLOR_RED);
-        set_hidden(s_ui.nas_pool_buttons[i], true);
-    }
-
     s_ui.nas_overview = lv_obj_create(page);
     lv_obj_remove_style_all(s_ui.nas_overview);
-    lv_obj_set_pos(s_ui.nas_overview, 0, 30);
-    lv_obj_set_size(s_ui.nas_overview, WT32_LCD_WIDTH, 214);
+    lv_obj_set_pos(s_ui.nas_overview, 0, 0);
+    lv_obj_set_size(s_ui.nas_overview, 480, 244);
     lv_obj_clear_flag(s_ui.nas_overview, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_ui.nas_overview, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_ui.nas_overview, nas_pool_list_event, LV_EVENT_CLICKED, NULL);
     s_ui.nas_overview_message = make_label(s_ui.nas_overview, "NAS 未连接", 16, 92,
                                             448, &app_font_14, COLOR_MUTED);
     lv_obj_set_style_text_align(s_ui.nas_overview_message, LV_TEXT_ALIGN_CENTER, 0);
@@ -843,9 +783,9 @@ static void create_nas_page(lv_obj_t *page)
         s_ui.nas_rows[i] = lv_btn_create(s_ui.nas_overview);
         lv_obj_remove_style_all(s_ui.nas_rows[i]);
         lv_obj_add_style(s_ui.nas_rows[i], &s_muted_button_style, 0);
-        lv_obj_set_pos(s_ui.nas_rows[i], 8, 2 + i * 51);
-        lv_obj_set_size(s_ui.nas_rows[i], 464, 48);
-        lv_obj_add_event_cb(s_ui.nas_rows[i], nas_row_event, LV_EVENT_CLICKED,
+        lv_obj_set_pos(s_ui.nas_rows[i], 8, 4 + i * 59);
+        lv_obj_set_size(s_ui.nas_rows[i], 464, 56);
+        lv_obj_add_event_cb(s_ui.nas_rows[i], nas_pool_list_event, LV_EVENT_CLICKED,
                             (void *)(uintptr_t)i);
         s_ui.nas_row_status_dots[i] = make_status_dot(s_ui.nas_rows[i], 9, 8, 8,
                                                        COLOR_RED);
@@ -860,29 +800,25 @@ static void create_nas_page(lv_obj_t *page)
         set_hidden(s_ui.nas_rows[i], true);
     }
 
-    s_ui.nas_detail = make_surface(page, 8, 34, 464, 206);
-    s_ui.nas_detail_status_dot = make_status_dot(s_ui.nas_detail, 12, 14, 8, COLOR_RED);
-    s_ui.nas_detail_title = make_label(s_ui.nas_detail, "存储池--", 26, 8, 112,
-                                        &app_font_14, COLOR_TEXT);
-    s_ui.nas_detail_capacity = make_label(s_ui.nas_detail, "--", 142, 8, 308,
-                                           &app_font_14, COLOR_TEXT);
-    lv_obj_set_style_text_align(s_ui.nas_detail_capacity, LV_TEXT_ALIGN_RIGHT, 0);
-    make_label(s_ui.nas_detail, "NAS 物理盘（未按池映射）", 12, 34, 238,
+    s_ui.nas_detail = make_surface(page, 8, 4, 464, 236);
+    lv_obj_add_flag(s_ui.nas_detail, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_ui.nas_detail, nas_disk_list_event, LV_EVENT_CLICKED, NULL);
+    make_label(s_ui.nas_detail, "NAS 物理盘（未按池映射）", 12, 10, 238,
                &app_font_14, COLOR_MUTED);
-    s_ui.nas_disk_previous = make_button(s_ui.nas_detail, "<", 354, 31, 28, 22,
+    s_ui.nas_disk_previous = make_button(s_ui.nas_detail, "^", 428, 0, 28, 98,
                                          nas_disk_page_event, (void *)(intptr_t)-1);
-    s_ui.nas_disk_page = make_label(s_ui.nas_detail, "1/1", 384, 35, 40,
+    s_ui.nas_disk_page = make_label(s_ui.nas_detail, "1/1", 428, 106, 28,
                                     &app_font_14, COLOR_MUTED);
     lv_obj_set_style_text_align(s_ui.nas_disk_page, LV_TEXT_ALIGN_CENTER, 0);
-    s_ui.nas_disk_next = make_button(s_ui.nas_detail, ">", 426, 31, 28, 22,
+    s_ui.nas_disk_next = make_button(s_ui.nas_detail, "v", 428, 130, 28, 106,
                                      nas_disk_page_event, (void *)(intptr_t)1);
     set_hidden(s_ui.nas_disk_previous, true);
     set_hidden(s_ui.nas_disk_next, true);
     set_hidden(s_ui.nas_disk_page, true);
-    make_label(s_ui.nas_detail, "硬盘", 24, 57, 52, &app_font_14, COLOR_MUTED);
-    make_label(s_ui.nas_detail, "型号", 80, 57, 202, &app_font_14, COLOR_MUTED);
-    make_label(s_ui.nas_detail, "温度", 292, 57, 58, &app_font_14, COLOR_MUTED);
-    make_label(s_ui.nas_detail, "容量", 358, 57, 82, &app_font_14, COLOR_MUTED);
+    make_label(s_ui.nas_detail, "状态", 12, 44, 40, &app_font_14, COLOR_MUTED);
+    make_label(s_ui.nas_detail, "硬盘", 52, 44, 70, &app_font_14, COLOR_MUTED);
+    make_label(s_ui.nas_detail, "型号", 122, 44, 220, &app_font_14, COLOR_MUTED);
+    make_label(s_ui.nas_detail, "温度", 342, 44, 70, &app_font_14, COLOR_MUTED);
     s_ui.nas_disk_empty = make_label(s_ui.nas_detail, "未获取到物理盘信息", 12, 112,
                                       440, &app_font_14, COLOR_MUTED);
     lv_obj_set_style_text_align(s_ui.nas_disk_empty, LV_TEXT_ALIGN_CENTER, 0);
@@ -890,19 +826,19 @@ static void create_nas_page(lv_obj_t *page)
         lv_obj_t *row = lv_obj_create(s_ui.nas_detail);
         s_ui.nas_disk_rows[i] = row;
         lv_obj_remove_style_all(row);
-        lv_obj_set_pos(row, 8, 78 + i * 28);
-        lv_obj_set_size(row, 448, 26);
+        lv_obj_set_pos(row, 8, 64 + i * 40);
+        lv_obj_set_size(row, 412, 36);
         lv_obj_set_style_border_color(row, color(COLOR_LINE), 0);
         lv_obj_set_style_border_width(row, 1, 0);
         lv_obj_set_style_border_side(row, LV_BORDER_SIDE_BOTTOM, 0);
         lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-        s_ui.nas_disk_dots[i] = make_status_dot(row, 3, 9, 7, COLOR_RED);
-        s_ui.nas_disk_ids[i] = make_label(row, "--", 14, 5, 52, &app_font_14, COLOR_TEXT);
-        s_ui.nas_disk_models[i] = make_label(row, "--", 70, 5, 202, &app_font_14, COLOR_TEXT);
-        s_ui.nas_disk_temperatures[i] = make_label(row, "--", 282, 5, 60,
+        lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(row, nas_disk_list_event, LV_EVENT_CLICKED, NULL);
+        s_ui.nas_disk_dots[i] = make_status_dot(row, 3, 14, 7, COLOR_RED);
+        s_ui.nas_disk_ids[i] = make_label(row, "--", 14, 9, 80, &app_font_14, COLOR_TEXT);
+        s_ui.nas_disk_models[i] = make_label(row, "--", 94, 9, 216, &app_font_14, COLOR_TEXT);
+        s_ui.nas_disk_temperatures[i] = make_label(row, "--", 310, 9, 86,
                                                     &app_font_14, COLOR_TEXT);
-        s_ui.nas_disk_capacities[i] = make_label(row, "--", 348, 5, 86,
-                                                  &app_font_14, COLOR_TEXT);
         set_hidden(row, true);
     }
     set_hidden(s_ui.nas_detail, true);
@@ -932,7 +868,7 @@ static void create_nas_page(lv_obj_t *page)
     lv_obj_set_style_text_align(s_ui.nas_download_value, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_style_text_align(s_ui.nas_ip_value, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_style_text_align(s_ui.nas_uptime_value, LV_TEXT_ALIGN_LEFT, 0);
-    show_nas_overview();
+    show_nas_pools();
 }
 
 static void set_rotation_button_state(void)
@@ -1282,7 +1218,6 @@ esp_err_t dashboard_ui_create(void)
     memset(&s_ui, 0, sizeof(s_ui));
     s_ui.active_page = 1;
     s_ui.selected_vm_index = -1;
-    s_ui.selected_nas_pool_index = -1;
     init_styles();
     s_ui.root = lv_scr_act();
     lv_obj_remove_style_all(s_ui.root);
@@ -1416,15 +1351,11 @@ static void update_nas(void)
     }
     for (int i = 0; i < NAS_VISIBLE; ++i) {
         const bool visible = i < (int)snapshot->nas_pool_count;
-        set_hidden(s_ui.nas_pool_buttons[i], !visible);
         set_hidden(s_ui.nas_rows[i], !visible);
         if (!visible) continue;
         const nas_pool_t *pool = &snapshot->nas_pools[i];
         const bool healthy = nas_live && pool->healthy;
-        lv_label_set_text_fmt(s_ui.nas_pool_button_labels[i], "存储池%d", i + 1);
         lv_label_set_text_fmt(s_ui.nas_row_labels[i], "存储池%d", i + 1);
-        lv_obj_set_style_bg_color(s_ui.nas_pool_button_dots[i],
-                                  color(healthy ? COLOR_GREEN : COLOR_RED), 0);
         lv_obj_set_style_bg_color(s_ui.nas_row_status_dots[i],
                                   color(healthy ? COLOR_GREEN : COLOR_RED), 0);
         lv_label_set_text(s_ui.nas_row_descriptions[i], healthy ? "" :
@@ -1482,10 +1413,7 @@ static void update_nas(void)
     } else {
         lv_label_set_text(s_ui.nas_uptime_value, "运行 --");
     }
-    if (s_ui.selected_nas_pool_index >= (int)snapshot->nas_pool_count)
-        show_nas_overview();
-    else if (s_ui.selected_nas_pool_index >= 0)
-        update_nas_detail();
+    if (s_ui.nas_disks_visible) update_nas_disks();
 }
 
 void dashboard_ui_update(const app_snapshot_t *snapshot)
