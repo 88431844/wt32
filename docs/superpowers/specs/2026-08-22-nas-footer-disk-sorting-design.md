@@ -16,6 +16,8 @@ Reduce the visual weight of the NAS footer while keeping its data readable, and 
 
 ## Disk Header Controls
 
+- Remove the `NAS 物理盘（未按池映射）` title row.
+- Move the sortable column headers to the top of the disk panel and use the recovered height to increase the four disk-row heights.
 - Replace the passive `硬盘`, `型号`, and `温度` labels with compact sortable header buttons.
 - Show the active column's direction with an up or down icon. Inactive columns do not show a direction icon.
 - The initial order is disk identifier ascending.
@@ -36,6 +38,8 @@ Reduce the visual weight of the NAS footer while keeping its data readable, and 
 ## Interaction Boundaries
 
 - Header-button clicks only change sorting and must not return to the storage-pool list.
+- Both pager buttons remain visible on every page so the pager column keeps a stable shape.
+- The up button is dimmed and disabled on the first page; the down button is dimmed and disabled on the last page.
 - Pager-button clicks only change pages and must not return to the storage-pool list.
 - Clicking the remaining disk-list area returns to the storage-pool list, preserving the existing behavior.
 

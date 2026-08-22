@@ -52,7 +52,7 @@ Expected: all four footer markers are present.
 
 - [ ] **Step 1: Add sortable header buttons**
 
-Replace passive labels with buttons that do not bubble to the disk-panel return handler:
+Remove the disk-panel title and replace the passive labels with buttons that do not bubble to the disk-panel return handler:
 
 ```html
 <div class="disk-head">
@@ -97,12 +97,27 @@ function renderDisks(){
 }
 ```
 
-- [ ] **Step 4: Verify source-level behavior markers**
+- [ ] **Step 4: Keep pager controls visible and disable unavailable directions**
+
+Give the pager buttons stable identifiers and update their disabled state from the sorted collection:
+
+```js
+document.getElementById('diskPrev').disabled=dp===0;
+document.getElementById('diskNext').disabled=dp+4>=ordered.length;
+```
+
+Use a dimmed disabled style instead of hiding either button:
+
+```css
+.pager button:disabled{opacity:.32;color:var(--muted)}
+```
+
+- [ ] **Step 5: Verify source-level behavior markers**
 
 Run:
 
 ```bash
-rg -n "Intl.Collator|sortedDisks|sortDisks|event.stopPropagation|dp=0|data-sort" .superpowers/brainstorm/48921-1787383837/content/implementation-final-v10.html
+rg -n "Intl.Collator|sortedDisks|sortDisks|event.stopPropagation|dp=0|data-sort|diskPrev|diskNext|button:disabled" .superpowers/brainstorm/48921-1787383837/content/implementation-final-v10.html
 ```
 
 Expected: natural sorting, event isolation, page reset, and all three controls are present.
@@ -133,6 +148,7 @@ temperature descending: highest valid temperatures first
 ```
 
 Confirm pager clicks stay in the disk view and a disk-row click returns to pools.
+Confirm the first page shows a dimmed up button, the middle page enables both buttons, and the final page shows a dimmed down button.
 
 - [ ] **Step 4: Check rendering health and capture evidence**
 
