@@ -142,87 +142,50 @@ class DashboardUiContractTest(unittest.TestCase):
         callback = callback[:callback.index("static void", 20)]
         self.assertNotIn("DEVICE_KEY_HOME_PAGE", callback)
 
-    def test_pve_identity_row_uses_three_fields_and_two_theme_aware_separators(self):
+    def test_pve_node_view_has_approved_geometry_and_fields(self):
         for marker in (
-            "lv_obj_t *pve_name;",
-            "lv_obj_t *pve_version;",
-            "lv_obj_t *pve_host;",
-            "lv_obj_t *pve_identity_dividers[2];",
+            "#define VM_VISIBLE 4",
+            "#define PVE_IDENTITY_HEIGHT 40",
+            "#define PVE_METRIC_ROW_HEIGHT 58",
+            "#define PVE_PROCESSOR_ROW_HEIGHT 40",
+            "#define PVE_NARROW_WIDTH 168",
+            "#define PVE_VM_BUTTON_Y 236",
+            "lv_obj_t *pve_node_view;",
+            "lv_obj_t *pve_uptime;",
+            "lv_obj_t *pve_cpu_model;",
+            "lv_obj_t *pve_vm_list_button;",
         ):
             self.assertIn(marker, UI)
-        self.assertNotIn("lv_obj_t *pve_identity;", UI)
-        creation = UI[UI.index("lv_obj_t *summary = make_surface") : UI.index('make_label(summary, "CPU"')]
-        compact_creation = " ".join(creation.split())
-        for marker in (
-            'make_label(summary, "name --", 24, 8, 132, &app_font_14, COLOR_TEXT)',
-            "make_rule(summary, 160, 7, 1, 20)",
-            'make_label(summary, "version --", 170, 8, 132, &app_font_14, COLOR_TEXT)',
-            "make_rule(summary, 306, 7, 1, 20)",
-            'make_label(summary, "IP --", 316, 8, 132, &app_font_14, COLOR_TEXT)',
-        ):
-            self.assertIn(marker, compact_creation)
+        for label in ('"CPU"', '"系统负载"', '"内存"', '"存储"',
+                      '"处理器"', '"虚拟机列表"'):
+            self.assertIn(label, UI)
+        creation = UI[
+            UI.index("static void create_pve_page"):
+            UI.index("static void show_nas_pools")
+        ]
+        self.assertNotIn("temperature", creation.lower())
 
-        update_pve = UI[UI.index("static void update_pve(void)\n{") : UI.index("static void update_nas(void)\n{")]
-        compact_update = " ".join(update_pve.split())
-        online_start = compact_update.index("if (snapshot->pve_online) {")
-        else_marker = "} else {"
-        else_start = compact_update.index(else_marker, online_start)
-        online_branch = compact_update[online_start:else_start]
-        offline_end = compact_update.index("format_percent(buffer", else_start)
-        offline_branch = compact_update[else_start + len(else_marker):offline_end]
+    def test_pve_has_three_content_views_without_old_subnavigation(self):
         for marker in (
-            'lv_label_set_text_fmt(s_ui.pve_name, "name %s", snapshot->pve_name[0] ? snapshot->pve_name : "p330")',
-            'lv_label_set_text_fmt(s_ui.pve_version, "version %s", snapshot->pve_version[0] ? snapshot->pve_version : "--")',
-            'lv_label_set_text_fmt(s_ui.pve_host, "IP %s", snapshot->pve_host[0] ? snapshot->pve_host : "--")',
+            "PVE_VIEW_NODE",
+            "PVE_VIEW_VM_LIST",
+            "PVE_VIEW_VM_DETAIL",
+            "show_pve_node",
+            "show_pve_vm_list",
+            "show_vm_detail",
         ):
-            self.assertIn(marker, online_branch)
-        self.assertIn("lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GREEN), 0)", online_branch)
-        for marker in (
-            "lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GRAY), 0)",
-            'lv_label_set_text(s_ui.pve_name, snapshot->pve_configured ? "PVE 离线" : "PVE 未配置")',
-            'lv_label_set_text(s_ui.pve_version, "--")',
-            'lv_label_set_text(s_ui.pve_host, "--")',
+            self.assertIn(marker, UI)
+        for removed in (
+            "pve_overview_button",
+            "vm_nav_buttons",
+            "vm_nav_offset",
+            "vm_detail_previous",
+            "vm_detail_next",
+            '"PVE 总览"',
+            "PVE_SUBNAV_LEFT",
+            "PVE_SUBNAV_RIGHT",
         ):
-            self.assertNotIn(marker, online_branch)
-        for marker in (
-            'lv_label_set_text(s_ui.pve_name, snapshot->pve_configured ? "PVE 离线" : "PVE 未配置")',
-            'lv_label_set_text(s_ui.pve_version, "--")',
-            'lv_label_set_text(s_ui.pve_host, "--")',
-            "lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GRAY), 0)",
-        ):
-            self.assertIn(marker, offline_branch)
-        for marker in (
-            "lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GREEN), 0)",
-            'lv_label_set_text_fmt(s_ui.pve_name, "name %s",',
-            'lv_label_set_text_fmt(s_ui.pve_version, "version %s",',
-            'lv_label_set_text_fmt(s_ui.pve_host, "IP %s",',
-        ):
-            self.assertNotIn(marker, offline_branch)
-        self.assertNotIn('"pve name:%s version:%s %s 在线"', update_pve)
-        self.assertNotIn("在线", update_pve)
-
-        monitor_message = UI[UI.index("static void show_monitor_message") : UI.index("void dashboard_ui_update")]
-        compact_message = " ".join(monitor_message.split())
-        pve_message_start = compact_message.index("} else if (monitor == APP_MONITOR_PVE) {")
-        pve_message = compact_message[pve_message_start:]
-        for marker in (
-            "lv_label_set_text(s_ui.pve_name, message)",
-            'lv_label_set_text(s_ui.pve_version, "--")',
-            'lv_label_set_text(s_ui.pve_host, "--")',
-            "lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GRAY), 0)",
-        ):
-            self.assertIn(marker, pve_message)
-        for field in ("pve_name", "pve_version", "pve_host"):
-            self.assertNotIn(f"lv_obj_set_style_text_color(s_ui.{field}", UI)
-
-        apply_theme = UI[UI.index("static void apply_theme(void)") : UI.index("static void page_event")]
-        compact_theme = "".join(apply_theme.split())
-        self.assertIn("for(size_ti=0;i<2;++i)", compact_theme)
-        self.assertIn("if(s_ui.pve_identity_dividers[i]!=NULL)", compact_theme)
-        self.assertIn(
-            "lv_obj_set_style_bg_color(s_ui.pve_identity_dividers[i],color(COLOR_LINE),0)",
-            compact_theme,
-        )
+            self.assertNotIn(removed, UI)
 
 if __name__ == "__main__":
     unittest.main()
