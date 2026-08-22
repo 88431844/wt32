@@ -21,11 +21,15 @@ LV_FONT_DECLARE(app_font_18);
 #define PAGE_COUNT 3
 #define VM_VISIBLE 4
 #define PVE_IDENTITY_HEIGHT 40
-#define PVE_METRIC_ROW_HEIGHT 58
-#define PVE_PROCESSOR_ROW_HEIGHT 40
+#define PVE_METRIC_ROW_HEIGHT 64
+#define PVE_PROCESSOR_ROW_HEIGHT 42
 #define PVE_NARROW_WIDTH 168
-#define PVE_VM_BUTTON_Y 236
+#define PVE_VM_BUTTON_Y 224
+#define PVE_VM_HIT_HEIGHT 56
+#define PVE_VM_VISUAL_HEIGHT 40
 #define PVE_RULE_COUNT 6
+#define PVE_VM_LIST_RULE_COUNT 9
+#define PVE_VM_DETAIL_RULE_COUNT 4
 #define NAS_VISIBLE 4
 #define NAS_DISK_VISIBLE 4
 #define NAS_METRICS_HEIGHT 52
@@ -142,7 +146,7 @@ typedef struct {
     lv_obj_t *pve_cpu_value;
     lv_obj_t *pve_memory_value;
     lv_obj_t *pve_storage_value;
-    lv_obj_t *pve_load_value;
+    lv_obj_t *pve_load_values[3];
     lv_obj_t *pve_cpu_bar;
     lv_obj_t *pve_memory_bar;
     lv_obj_t *pve_storage_bar;
@@ -150,7 +154,11 @@ typedef struct {
     lv_obj_t *pve_node_view;
     lv_obj_t *pve_vm_list;
     lv_obj_t *pve_vm_list_button;
+    lv_obj_t *pve_vm_list_visual;
+    lv_obj_t *pve_vm_list_label;
+    lv_obj_t *vm_list_rules[PVE_VM_LIST_RULE_COUNT];
     lv_obj_t *vm_detail;
+    lv_obj_t *vm_detail_rules[PVE_VM_DETAIL_RULE_COUNT];
     lv_obj_t *vm_detail_title;
     lv_obj_t *vm_detail_status_dot;
     lv_obj_t *vm_detail_status;
@@ -563,6 +571,19 @@ static void apply_theme(void)
         if (s_ui.pve_rules[i] != NULL)
             lv_obj_set_style_bg_color(s_ui.pve_rules[i], color(COLOR_LINE), 0);
     }
+    for (size_t i = 0; i < PVE_VM_LIST_RULE_COUNT; ++i) {
+        if (s_ui.vm_list_rules[i] != NULL)
+            lv_obj_set_style_bg_color(s_ui.vm_list_rules[i], color(COLOR_LINE), 0);
+    }
+    for (size_t i = 0; i < PVE_VM_DETAIL_RULE_COUNT; ++i) {
+        if (s_ui.vm_detail_rules[i] != NULL)
+            lv_obj_set_style_bg_color(s_ui.vm_detail_rules[i], color(COLOR_LINE), 0);
+    }
+    for (int i = 0; i < VM_VISIBLE; ++i) {
+        if (s_ui.vm_name_buttons[i] != NULL)
+            lv_obj_set_style_bg_color(s_ui.vm_name_buttons[i], color(COLOR_BLUE),
+                                      LV_STATE_PRESSED);
+    }
     set_nav_button_state();
     set_rotation_button_state();
     set_refresh_button_state();
@@ -623,28 +644,28 @@ static void update_vm_detail(void)
                                 color(guest->running ? COLOR_GREEN : COLOR_GRAY), 0);
     lv_obj_set_style_bg_color(s_ui.vm_detail_status_dot,
                               color(guest->running ? COLOR_GREEN : COLOR_GRAY), 0);
-    lv_label_set_text_fmt(s_ui.vm_detail_ip, "IP  %s",
-                          guest->ipv4_address[0] != '\0' ? guest->ipv4_address : "--");
+    lv_label_set_text(s_ui.vm_detail_ip,
+                      guest->ipv4_address[0] != '\0' ? guest->ipv4_address : "--");
     format_percent(value, sizeof(value), guest->cpu_percent);
-    lv_label_set_text_fmt(s_ui.vm_detail_cpu, "CPU  %s  /  %" PRIu32 " 核", value, guest->cpu_cores);
+    lv_label_set_text_fmt(s_ui.vm_detail_cpu, "%s / %" PRIu32 " 核",
+                          value, guest->cpu_cores);
     if (guest->memory_total == 0) {
-        lv_label_set_text(s_ui.vm_detail_memory, "内存  --");
+        lv_label_set_text(s_ui.vm_detail_memory, "--");
     } else {
         format_bytes(used, sizeof(used), guest->memory_used);
         format_bytes(total, sizeof(total), guest->memory_total);
-        lv_label_set_text_fmt(s_ui.vm_detail_memory, "内存  %s / %s", used, total);
+        lv_label_set_text_fmt(s_ui.vm_detail_memory, "%s / %s", used, total);
     }
     if (guest->disk_total == 0) {
-        lv_label_set_text(s_ui.vm_detail_disk, "磁盘  --");
+        lv_label_set_text(s_ui.vm_detail_disk, "--");
     } else {
         format_bytes(used, sizeof(used), guest->disk_used);
         format_bytes(total, sizeof(total), guest->disk_total);
-        lv_label_set_text_fmt(s_ui.vm_detail_disk, "磁盘  %s / %s", used, total);
+        lv_label_set_text_fmt(s_ui.vm_detail_disk, "%s / %s", used, total);
     }
     format_uptime(uptime, sizeof(uptime), guest->uptime_seconds);
-    lv_label_set_text_fmt(s_ui.vm_detail_uptime, "运行时间  %s", uptime);
-    lv_label_set_text(s_ui.vm_detail_agent,
-                      guest->guest_agent ? "Guest Agent  在线" : "Guest Agent  未报告");
+    lv_label_set_text(s_ui.vm_detail_uptime, uptime);
+    lv_label_set_text(s_ui.vm_detail_agent, guest->guest_agent ? "在线" : "未报告");
     lv_obj_set_style_text_color(s_ui.vm_detail_agent,
                                 color(guest->guest_agent ? COLOR_GREEN : COLOR_MUTED), 0);
 }
@@ -733,51 +754,82 @@ static void create_pve_page(lv_obj_t *page)
     make_label(metrics, "CPU", 12, 8, 38, &app_font_14, COLOR_MUTED);
     s_ui.pve_cpu_value = make_label(metrics, "--", 56, 5, 100,
                                     &app_font_18, COLOR_TEXT);
-    s_ui.pve_cpu_bar = make_split_bar(metrics, 56, 39, 96, 5, 0, 100);
-    make_label(metrics, "系统负载", 180, 8, 70, &app_font_14, COLOR_MUTED);
-    s_ui.pve_load_value = make_label(metrics, "--", 252, 7, 198,
-                                     &app_font_14, COLOR_TEXT);
+    s_ui.pve_cpu_bar = make_split_bar(metrics, 56, 49, 96, 5, 0, 100);
+    make_label(metrics, "系统负载", 180, 10, 70, &app_font_14, COLOR_MUTED);
+    static const char *const load_labels[] = {"1分", "5分", "15分"};
+    for (int i = 0; i < 3; ++i) {
+        const int x = 252 + i * 66;
+        lv_obj_t *label = make_label(metrics, load_labels[i], x, 7, 58,
+                                     &app_font_14, COLOR_MUTED);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+        s_ui.pve_load_values[i] = make_label(metrics, "--", x, 30, 58,
+                                              &app_font_18, COLOR_TEXT);
+        lv_obj_set_style_text_align(s_ui.pve_load_values[i], LV_TEXT_ALIGN_CENTER, 0);
+    }
 
-    make_label(metrics, "内存", 12, PVE_METRIC_ROW_HEIGHT + 8, 38,
+    make_label(metrics, "存储", 12, PVE_METRIC_ROW_HEIGHT + 10, 38,
                &app_font_14, COLOR_MUTED);
-    s_ui.pve_memory_value = make_label(metrics, "--", 56,
-                                       PVE_METRIC_ROW_HEIGHT + 5, 100,
+    s_ui.pve_storage_value = make_label(metrics, "--", 56,
+                                        PVE_METRIC_ROW_HEIGHT + 8, 100,
+                                        &app_font_14, COLOR_TEXT);
+    s_ui.pve_storage_bar = make_split_bar(metrics, 56,
+                                          PVE_METRIC_ROW_HEIGHT + 49,
+                                          96, 5, 0, 100);
+    make_label(metrics, "内存", 180, PVE_METRIC_ROW_HEIGHT + 10, 70,
+               &app_font_14, COLOR_MUTED);
+    s_ui.pve_memory_value = make_label(metrics, "--", 252,
+                                       PVE_METRIC_ROW_HEIGHT + 8, 198,
                                        &app_font_18, COLOR_TEXT);
-    s_ui.pve_memory_bar = make_split_bar(metrics, 56,
-                                         PVE_METRIC_ROW_HEIGHT + 39,
-                                         96, 5, 0, 100);
-    make_label(metrics, "存储", 180, PVE_METRIC_ROW_HEIGHT + 8, 70,
-               &app_font_14, COLOR_MUTED);
-    s_ui.pve_storage_value = make_label(metrics, "--", 252,
-                                        PVE_METRIC_ROW_HEIGHT + 5, 198,
-                                        &app_font_18, COLOR_TEXT);
-    s_ui.pve_storage_bar = make_split_bar(metrics, 252,
-                                          PVE_METRIC_ROW_HEIGHT + 39,
-                                          198, 5, 0, 100);
+    s_ui.pve_memory_bar = make_split_bar(metrics, 252,
+                                         PVE_METRIC_ROW_HEIGHT + 49,
+                                         198, 5, 0, 100);
 
     const int processor_y = PVE_METRIC_ROW_HEIGHT * 2;
-    make_label(metrics, "处理器", 12, processor_y + 12, 52,
+    make_label(metrics, "处理器", 12, processor_y + 13, 52,
                &app_font_14, COLOR_MUTED);
     s_ui.pve_cpu_cores_value = make_label(metrics, "-- 核", 72,
-                                          processor_y + 10, 56,
+                                          processor_y + 12, 56,
                                           &app_font_14, COLOR_TEXT);
     s_ui.pve_cpu_model = make_label(metrics, "--", 136,
-                                    processor_y + 12, 314,
+                                    processor_y + 13, 314,
                                     &app_font_14, COLOR_MUTED);
-    s_ui.pve_vm_list_button = make_button(s_ui.pve_node_view, "虚拟机列表",
-                                          8, PVE_VM_BUTTON_Y, 464, 44,
-                                          pve_vm_list_button_event, NULL);
+    s_ui.pve_vm_list_button = lv_btn_create(s_ui.pve_node_view);
+    lv_obj_remove_style_all(s_ui.pve_vm_list_button);
+    lv_obj_set_pos(s_ui.pve_vm_list_button, 8, PVE_VM_BUTTON_Y);
+    lv_obj_set_size(s_ui.pve_vm_list_button, 464, PVE_VM_HIT_HEIGHT);
+    lv_obj_add_event_cb(s_ui.pve_vm_list_button, pve_vm_list_button_event,
+                        LV_EVENT_CLICKED, NULL);
+    s_ui.pve_vm_list_visual = lv_obj_create(s_ui.pve_vm_list_button);
+    lv_obj_remove_style_all(s_ui.pve_vm_list_visual);
+    lv_obj_add_style(s_ui.pve_vm_list_visual, &s_button_style, 0);
+    lv_obj_set_pos(s_ui.pve_vm_list_visual, 0,
+                   (PVE_VM_HIT_HEIGHT - PVE_VM_VISUAL_HEIGHT) / 2);
+    lv_obj_set_size(s_ui.pve_vm_list_visual, 464, PVE_VM_VISUAL_HEIGHT);
+    lv_obj_clear_flag(s_ui.pve_vm_list_visual, LV_OBJ_FLAG_CLICKABLE);
+    s_ui.pve_vm_list_label = make_label(s_ui.pve_vm_list_visual, "虚拟机列表",
+                                        0, 0, 464, &app_font_14, COLOR_TEXT);
+    lv_obj_center(s_ui.pve_vm_list_label);
+    lv_obj_set_style_text_align(s_ui.pve_vm_list_label, LV_TEXT_ALIGN_CENTER, 0);
 
     s_ui.pve_vm_list = make_surface(page, 8, 4, 464, 276);
     lv_obj_add_flag(s_ui.pve_vm_list, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(s_ui.pve_vm_list, vm_list_return_event, LV_EVENT_CLICKED, NULL);
-    s_ui.vm_title = make_label(s_ui.pve_vm_list, "虚拟机", 10, 6, 158,
+    s_ui.vm_list_rules[0] = make_rule(s_ui.pve_vm_list, 166, 0, 1, 276);
+    s_ui.vm_list_rules[1] = make_rule(s_ui.pve_vm_list, 280, 0, 1, 276);
+    s_ui.vm_list_rules[2] = make_rule(s_ui.pve_vm_list, 328, 0, 1, 276);
+    s_ui.vm_list_rules[3] = make_rule(s_ui.pve_vm_list, 420, 0, 1, 276);
+    s_ui.vm_list_rules[4] = make_rule(s_ui.pve_vm_list, 0, 30, 420, 1);
+    s_ui.vm_list_rules[5] = make_rule(s_ui.pve_vm_list, 0, 88, 420, 1);
+    s_ui.vm_list_rules[6] = make_rule(s_ui.pve_vm_list, 0, 146, 420, 1);
+    s_ui.vm_list_rules[7] = make_rule(s_ui.pve_vm_list, 0, 204, 420, 1);
+    s_ui.vm_list_rules[8] = make_rule(s_ui.pve_vm_list, 0, 262, 420, 1);
+    s_ui.vm_title = make_label(s_ui.pve_vm_list, "虚拟机", 8, 6, 150,
                                &app_font_14, COLOR_TEXT);
-    s_ui.vm_header_ip = make_label(s_ui.pve_vm_list, "IP", 170, 6, 112,
+    s_ui.vm_header_ip = make_label(s_ui.pve_vm_list, "IP", 174, 6, 98,
                                    &app_font_14, COLOR_MUTED);
-    s_ui.vm_header_cpu = make_label(s_ui.pve_vm_list, "CPU", 284, 6, 46,
+    s_ui.vm_header_cpu = make_label(s_ui.pve_vm_list, "CPU", 288, 6, 32,
                                     &app_font_14, COLOR_MUTED);
-    s_ui.vm_header_memory = make_label(s_ui.pve_vm_list, "内存", 332, 6, 84,
+    s_ui.vm_header_memory = make_label(s_ui.pve_vm_list, "内存", 336, 6, 76,
                                        &app_font_14, COLOR_MUTED);
     s_ui.vm_list_empty = make_label(s_ui.pve_vm_list, "未发现虚拟机", 12, 126, 396,
                                     &app_font_14, COLOR_MUTED);
@@ -805,7 +857,6 @@ static void create_pve_page(lv_obj_t *page)
         const int y = 30 + i * 58;
         s_ui.vm_rows[i] = lv_obj_create(s_ui.pve_vm_list);
         lv_obj_remove_style_all(s_ui.vm_rows[i]);
-        lv_obj_add_style(s_ui.vm_rows[i], &s_muted_button_style, 0);
         lv_obj_set_pos(s_ui.vm_rows[i], 0, y);
         lv_obj_set_size(s_ui.vm_rows[i], 420, 58);
         lv_obj_clear_flag(s_ui.vm_rows[i], LV_OBJ_FLAG_SCROLLABLE);
@@ -813,23 +864,26 @@ static void create_pve_page(lv_obj_t *page)
         lv_obj_add_event_cb(s_ui.vm_rows[i], vm_list_return_event, LV_EVENT_CLICKED, NULL);
         s_ui.vm_name_buttons[i] = lv_btn_create(s_ui.vm_rows[i]);
         lv_obj_remove_style_all(s_ui.vm_name_buttons[i]);
-        lv_obj_add_style(s_ui.vm_name_buttons[i], &s_muted_button_style, 0);
-        lv_obj_set_pos(s_ui.vm_name_buttons[i], 4, 4);
-        lv_obj_set_size(s_ui.vm_name_buttons[i], 162, 50);
+        lv_obj_set_pos(s_ui.vm_name_buttons[i], 0, 0);
+        lv_obj_set_size(s_ui.vm_name_buttons[i], 166, 58);
+        lv_obj_set_style_bg_color(s_ui.vm_name_buttons[i], color(COLOR_BLUE),
+                                  LV_STATE_PRESSED);
+        lv_obj_set_style_bg_opa(s_ui.vm_name_buttons[i], LV_OPA_30,
+                                LV_STATE_PRESSED);
         lv_obj_add_flag(s_ui.vm_name_buttons[i], LV_OBJ_FLAG_EVENT_BUBBLE);
         lv_obj_add_event_cb(s_ui.vm_name_buttons[i], vm_name_event, LV_EVENT_CLICKED,
                             (void *)(intptr_t)i);
-        s_ui.vm_row_dots[i] = make_status_dot(s_ui.vm_name_buttons[i], 5, 21, 8,
+        s_ui.vm_row_dots[i] = make_status_dot(s_ui.vm_name_buttons[i], 8, 25, 8,
                                                COLOR_GRAY);
         lv_obj_clear_flag(s_ui.vm_row_dots[i], LV_OBJ_FLAG_CLICKABLE);
-        s_ui.vm_row_labels[i] = make_label(s_ui.vm_name_buttons[i], "", 17, 16, 124,
+        s_ui.vm_row_labels[i] = make_label(s_ui.vm_name_buttons[i], "", 22, 20, 122,
                                             &app_font_14, COLOR_TEXT);
-        make_label(s_ui.vm_name_buttons[i], ">", 142, 16, 14, &app_font_14, COLOR_MUTED);
-        s_ui.vm_row_ips[i] = make_label(s_ui.vm_rows[i], "--", 170, 20, 112,
+        make_label(s_ui.vm_name_buttons[i], ">", 150, 20, 12, &app_font_14, COLOR_MUTED);
+        s_ui.vm_row_ips[i] = make_label(s_ui.vm_rows[i], "--", 174, 20, 98,
                                         &app_font_14, COLOR_MUTED);
-        s_ui.vm_row_cpu[i] = make_label(s_ui.vm_rows[i], "--", 284, 20, 46,
+        s_ui.vm_row_cpu[i] = make_label(s_ui.vm_rows[i], "--", 288, 20, 32,
                                         &app_font_14, COLOR_MUTED);
-        s_ui.vm_row_memory[i] = make_label(s_ui.vm_rows[i], "--", 332, 20, 84,
+        s_ui.vm_row_memory[i] = make_label(s_ui.vm_rows[i], "--", 336, 20, 76,
                                            &app_font_14, COLOR_MUTED);
         set_hidden(s_ui.vm_rows[i], true);
     }
@@ -837,27 +891,38 @@ static void create_pve_page(lv_obj_t *page)
     s_ui.vm_detail = make_surface(page, 8, 4, 464, 276);
     lv_obj_add_flag(s_ui.vm_detail, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(s_ui.vm_detail, vm_detail_return_event, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *vm_detail_back = make_button(s_ui.vm_detail, "<", 8, 8, 30, 30,
+    s_ui.vm_detail_rules[0] = make_rule(s_ui.vm_detail, 0, 54, 464, 1);
+    s_ui.vm_detail_rules[1] = make_rule(s_ui.vm_detail, 231, 54, 1, 222);
+    s_ui.vm_detail_rules[2] = make_rule(s_ui.vm_detail, 0, 127, 464, 1);
+    s_ui.vm_detail_rules[3] = make_rule(s_ui.vm_detail, 0, 200, 464, 1);
+    lv_obj_t *vm_detail_back = make_button(s_ui.vm_detail, "<", 8, 12, 30, 30,
                                            vm_detail_return_event, NULL);
     lv_obj_add_flag(vm_detail_back, LV_OBJ_FLAG_EVENT_BUBBLE);
-    s_ui.vm_detail_title = make_label(s_ui.vm_detail, "VM --", 48, 14, 398,
+    s_ui.vm_detail_title = make_label(s_ui.vm_detail, "VM --", 48, 17, 296,
                                       &app_font_18, COLOR_TEXT);
-    s_ui.vm_detail_status_dot = make_status_dot(s_ui.vm_detail, 18, 55, 8, COLOR_GRAY);
+    s_ui.vm_detail_status_dot = make_status_dot(s_ui.vm_detail, 356, 23, 8, COLOR_GRAY);
     lv_obj_clear_flag(s_ui.vm_detail_status_dot, LV_OBJ_FLAG_CLICKABLE);
-    s_ui.vm_detail_status = make_label(s_ui.vm_detail, "--", 32, 50, 180,
+    s_ui.vm_detail_status = make_label(s_ui.vm_detail, "--", 372, 18, 76,
                                        &app_font_14, COLOR_MUTED);
-    s_ui.vm_detail_ip = make_label(s_ui.vm_detail, "IP  --", 18, 86, 205,
-                                   &app_font_14, COLOR_TEXT);
-    s_ui.vm_detail_cpu = make_label(s_ui.vm_detail, "CPU  --", 232, 86, 210,
-                                    &app_font_14, COLOR_TEXT);
-    s_ui.vm_detail_memory = make_label(s_ui.vm_detail, "内存  --", 18, 124, 205,
+    make_label(s_ui.vm_detail, "IP", 18, 67, 195, &app_font_14, COLOR_MUTED);
+    s_ui.vm_detail_ip = make_label(s_ui.vm_detail, "--", 18, 91, 195,
+                                   &app_font_18, COLOR_TEXT);
+    make_label(s_ui.vm_detail, "CPU", 249, 67, 195, &app_font_14, COLOR_MUTED);
+    s_ui.vm_detail_cpu = make_label(s_ui.vm_detail, "--", 249, 91, 195,
+                                    &app_font_18, COLOR_TEXT);
+    make_label(s_ui.vm_detail, "内存", 18, 140, 195, &app_font_14, COLOR_MUTED);
+    s_ui.vm_detail_memory = make_label(s_ui.vm_detail, "--", 18, 164, 195,
+                                       &app_font_18, COLOR_TEXT);
+    make_label(s_ui.vm_detail, "磁盘", 249, 140, 195, &app_font_14, COLOR_MUTED);
+    s_ui.vm_detail_disk = make_label(s_ui.vm_detail, "--", 249, 164, 195,
+                                     &app_font_18, COLOR_TEXT);
+    make_label(s_ui.vm_detail, "运行时间", 18, 213, 195, &app_font_14, COLOR_MUTED);
+    s_ui.vm_detail_uptime = make_label(s_ui.vm_detail, "--", 18, 237, 195,
                                        &app_font_14, COLOR_TEXT);
-    s_ui.vm_detail_disk = make_label(s_ui.vm_detail, "磁盘  --", 232, 124, 210,
-                                     &app_font_14, COLOR_TEXT);
-    s_ui.vm_detail_uptime = make_label(s_ui.vm_detail, "运行时间  --", 18, 164, 205,
-                                       &app_font_14, COLOR_TEXT);
-    s_ui.vm_detail_agent = make_label(s_ui.vm_detail, "Guest Agent  --", 232, 164, 210,
-                                      &app_font_14, COLOR_MUTED);
+    make_label(s_ui.vm_detail, "Guest Agent", 249, 213, 195,
+               &app_font_14, COLOR_MUTED);
+    s_ui.vm_detail_agent = make_label(s_ui.vm_detail, "--", 249, 237, 195,
+                                      &app_font_18, COLOR_MUTED);
     show_pve_node();
 }
 
@@ -1638,9 +1703,10 @@ static void update_pve(void)
     format_bytes(used, sizeof(used), snapshot->pve_storage_used);
     format_bytes(total, sizeof(total), snapshot->pve_storage_total);
     lv_label_set_text_fmt(s_ui.pve_storage_value, "%s/%s", used, total);
-    snprintf(buffer, sizeof(buffer), "%.1f %.1f %.1f",
-             snapshot->pve_load[0], snapshot->pve_load[1], snapshot->pve_load[2]);
-    lv_label_set_text(s_ui.pve_load_value, buffer);
+    for (int i = 0; i < 3; ++i) {
+        snprintf(buffer, sizeof(buffer), "%.1f", snapshot->pve_load[i]);
+        lv_label_set_text(s_ui.pve_load_values[i], buffer);
+    }
     lv_bar_set_value(s_ui.pve_cpu_bar, (int)snapshot->pve_cpu_percent, LV_ANIM_OFF);
     const int memory_percent = snapshot->pve_memory_total == 0 ? 0 :
         (int)(snapshot->pve_memory_used * 100ULL / snapshot->pve_memory_total);
@@ -1661,10 +1727,7 @@ static void update_pve(void)
         lv_label_set_text(s_ui.pve_cpu_cores_value, "-- 核");
     lv_label_set_text(s_ui.pve_cpu_model,
                       snapshot->pve_cpu_model[0] ? snapshot->pve_cpu_model : "--");
-    lv_obj_t *vm_button_label = lv_obj_get_child(s_ui.pve_vm_list_button, 0);
-    lv_label_set_text_fmt(vm_button_label, "虚拟机列表  %" PRIu32 "/%zu 运行",
-                          snapshot->pve_running_count, snapshot->pve_guest_count);
-    lv_label_set_text_fmt(s_ui.vm_title, "虚拟机 %" PRIu32 "/%zu 运行",
+    lv_label_set_text_fmt(s_ui.pve_vm_list_label, "虚拟机列表  %" PRIu32 "/%zu 运行",
                           snapshot->pve_running_count, snapshot->pve_guest_count);
     if (s_ui.selected_vm_index >= (int)snapshot->pve_guest_count &&
         s_ui.pve_view == PVE_VIEW_VM_DETAIL) show_pve_vm_list();
@@ -1878,7 +1941,7 @@ static void show_monitor_message(app_monitor_t monitor, const char *message)
         lv_label_set_text(s_ui.pve_host, "--");
         lv_label_set_text(s_ui.pve_uptime, "--");
         lv_label_set_text(s_ui.pve_cpu_value, "--");
-        lv_label_set_text(s_ui.pve_load_value, "--");
+        for (int i = 0; i < 3; ++i) lv_label_set_text(s_ui.pve_load_values[i], "--");
         lv_label_set_text(s_ui.pve_memory_value, "--");
         lv_label_set_text(s_ui.pve_storage_value, "--");
         lv_label_set_text(s_ui.pve_cpu_cores_value, "-- 核");
@@ -1917,6 +1980,8 @@ void dashboard_ui_update(app_model_event_t *event)
     s_ui.has_snapshot = true;
     if (event->monitor == APP_MONITOR_NAS) s_ui.has_nas_snapshot = true;
     if (event->monitor == APP_MONITOR_PVE) s_ui.has_pve_snapshot = true;
+    if (snapshot->pve_last_success_ms > 0) s_ui.has_pve_snapshot = true;
+    if (snapshot->nas_last_success_ms > 0) s_ui.has_nas_snapshot = true;
     lv_label_set_text(s_ui.ip_label,
                       snapshot->wifi_connected && snapshot->ip_address[0] != '\0' ?
                       snapshot->ip_address : "WiFi未连接，请到设置里面设置");

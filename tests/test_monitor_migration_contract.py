@@ -103,6 +103,25 @@ class MonitorMigrationContractTest(unittest.TestCase):
         self.assertIn("APP_MODEL_EVENT_REFRESH_FAILED", PROVIDER)
         self.assertIn("APP_MODEL_EVENT_OFFLINE", PROVIDER)
 
+    def test_startup_prefetches_other_monitor_once_then_polls_active_page(self):
+        for marker in (
+            "startup_primary_monitor",
+            "startup_prefetch_monitor",
+            "startup_primary_complete",
+            "startup_prefetch_complete",
+            "cycle_monitor",
+            "cycle_monitor = control.active_monitor",
+            "cycle_monitor == APP_MONITOR_PVE",
+            "cycle_monitor == APP_MONITOR_NAS",
+            "DEVICE_KEY_HOME_PAGE",
+            "saved_homepage == 1 ? APP_MONITOR_PVE : APP_MONITOR_NAS",
+            "Startup primary refresh finished",
+            "Startup prefetch finished",
+        ):
+            self.assertIn(marker, PROVIDER)
+        self.assertIn("snapshot->pve_last_success_ms > 0", UI)
+        self.assertIn("snapshot->nas_last_success_ms > 0", UI)
+
     def test_homepage_key_is_valid_short_nvs_key(self):
         self.assertIn('#define DEVICE_KEY_HOME_PAGE "home_page"', SETTINGS_HEADER)
 

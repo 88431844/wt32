@@ -1186,26 +1186,39 @@ static void live_provider_task(void *argument)
     app_snapshot_init(&snapshot);
     bool pve_has_snapshot = false;
     bool nas_has_snapshot = false;
+    app_monitor_t startup_primary_monitor = APP_MONITOR_NONE;
+    app_monitor_t startup_prefetch_monitor = APP_MONITOR_NONE;
+    bool startup_primary_complete = false;
+    bool startup_prefetch_complete = false;
     uint32_t revision = 0;
-    ESP_LOGI(TAG, "Live PVE/NAS provider started; active-page polling");
+    ESP_LOGI(TAG, "Live PVE/NAS provider started; startup prefetch then active-page polling");
     while (true) {
         provider_control_t control = {
             .active_monitor = APP_MONITOR_NAS,
             .refresh_seconds = DEFAULT_REFRESH_SECONDS,
         };
         (void)xQueuePeek(s_control_queue, &control, 0);
+        if (startup_primary_monitor == APP_MONITOR_NONE) {
+            startup_primary_monitor = control.active_monitor == APP_MONITOR_PVE ?
+                                      APP_MONITOR_PVE : APP_MONITOR_NAS;
+            startup_prefetch_monitor = startup_primary_monitor == APP_MONITOR_NAS ?
+                                       APP_MONITOR_PVE : APP_MONITOR_NAS;
+        }
+        app_monitor_t cycle_monitor = control.active_monitor;
+        if (!startup_primary_complete) cycle_monitor = startup_primary_monitor;
+        else if (!startup_prefetch_complete) cycle_monitor = startup_prefetch_monitor;
         const TickType_t cycle_started = xTaskGetTickCount();
         load_monitor_settings(pve_host, pve_node, token_id, token_secret, pve_ca,
                                nas_host, community);
-        const bool active_has_snapshot = control.active_monitor == APP_MONITOR_PVE ?
-            pve_has_snapshot : control.active_monitor == APP_MONITOR_NAS ? nas_has_snapshot : true;
-        if (!active_has_snapshot)
-            publish_status(APP_MODEL_EVENT_LOADING, control.active_monitor, NULL);
+        const bool cycle_has_snapshot = cycle_monitor == APP_MONITOR_PVE ?
+            pve_has_snapshot : cycle_monitor == APP_MONITOR_NAS ? nas_has_snapshot : true;
+        if (!cycle_has_snapshot)
+            publish_status(APP_MODEL_EVENT_LOADING, cycle_monitor, NULL);
         app_snapshot_t *candidate = app_snapshot_create();
         const bool cloned = candidate != NULL && app_snapshot_clone(candidate, &snapshot);
         if (!cloned) {
             app_snapshot_destroy(candidate);
-            publish_collection_failure(control.active_monitor, active_has_snapshot,
+            publish_collection_failure(cycle_monitor, cycle_has_snapshot,
                                        "内存不足，无法刷新数据", cycle_started);
         } else {
             candidate->revision = ++revision;
@@ -1217,8 +1230,9 @@ static void live_provider_task(void *argument)
             copy_text(candidate->nas_host, sizeof(candidate->nas_host), nas_host);
             set_clock(candidate);
         }
+        const bool cycle_connected = cloned && candidate->wifi_connected;
 
-        if (cloned && control.active_monitor == APP_MONITOR_PVE) {
+        if (cloned && cycle_monitor == APP_MONITOR_PVE) {
             bool pve_ok = false;
             if (candidate->wifi_connected) {
                 pve_ok = collect_pve(pve_host, pve_node, token_id, token_secret,
@@ -1245,7 +1259,7 @@ static void live_provider_task(void *argument)
                 ESP_LOGW(TAG, "PVE refresh failed: %s", candidate->pve_last_error);
                 app_snapshot_destroy(candidate);
             }
-        } else if (cloned && control.active_monitor == APP_MONITOR_NAS) {
+        } else if (cloned && cycle_monitor == APP_MONITOR_NAS) {
             bool nas_ok = false;
             if (candidate->wifi_connected) {
                 nas_ok = collect_nas(nas_host, community, candidate);
@@ -1285,13 +1299,28 @@ static void live_provider_task(void *argument)
         } else if (cloned) {
             app_snapshot_destroy(candidate);
         }
+        bool continue_startup_immediately = false;
+        if (cycle_connected && !startup_primary_complete &&
+            cycle_monitor == startup_primary_monitor) {
+            startup_primary_complete = true;
+            continue_startup_immediately = true;
+            ESP_LOGI(TAG, "Startup primary refresh finished: monitor=%s",
+                     cycle_monitor == APP_MONITOR_PVE ? "PVE" : "NAS");
+        } else if (cycle_connected && startup_primary_complete &&
+                   !startup_prefetch_complete &&
+                   cycle_monitor == startup_prefetch_monitor) {
+            startup_prefetch_complete = true;
+            ESP_LOGI(TAG, "Startup prefetch finished: monitor=%s; active-page polling enabled",
+                     cycle_monitor == APP_MONITOR_PVE ? "PVE" : "NAS");
+        }
         memset(token_id, 0, sizeof(token_id));
         memset(token_secret, 0, sizeof(token_secret));
         memset(pve_ca, 0, sizeof(pve_ca));
         memset(community, 0, sizeof(community));
         const TickType_t elapsed = xTaskGetTickCount() - cycle_started;
         const TickType_t interval = pdMS_TO_TICKS((uint32_t)control.refresh_seconds * 1000U);
-        const TickType_t wait = elapsed < interval ? interval - elapsed : 0;
+        const TickType_t wait = continue_startup_immediately ? 0 :
+                                elapsed < interval ? interval - elapsed : 0;
         (void)network_manager_wait_for_settings_change(wait);
     }
 }
@@ -1342,8 +1371,11 @@ QueueHandle_t app_model_start_live_provider(void)
         !valid_refresh_seconds(refresh_seconds)) {
         refresh_seconds = DEFAULT_REFRESH_SECONDS;
     }
+    uint8_t saved_homepage = 0;
+    if (device_settings_get_u8(DEVICE_KEY_HOME_PAGE, &saved_homepage) != ESP_OK ||
+        saved_homepage > 1) saved_homepage = 0;
     provider_control_t control = {
-        .active_monitor = APP_MONITOR_NAS,
+        .active_monitor = saved_homepage == 1 ? APP_MONITOR_PVE : APP_MONITOR_NAS,
         .refresh_seconds = refresh_seconds,
     };
     xQueueOverwrite(s_control_queue, &control);

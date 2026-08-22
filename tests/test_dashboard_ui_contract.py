@@ -146,23 +146,32 @@ class DashboardUiContractTest(unittest.TestCase):
         for marker in (
             "#define VM_VISIBLE 4",
             "#define PVE_IDENTITY_HEIGHT 40",
-            "#define PVE_METRIC_ROW_HEIGHT 58",
-            "#define PVE_PROCESSOR_ROW_HEIGHT 40",
+            "#define PVE_METRIC_ROW_HEIGHT 64",
+            "#define PVE_PROCESSOR_ROW_HEIGHT 42",
             "#define PVE_NARROW_WIDTH 168",
-            "#define PVE_VM_BUTTON_Y 236",
+            "#define PVE_VM_BUTTON_Y 224",
+            "#define PVE_VM_HIT_HEIGHT 56",
+            "#define PVE_VM_VISUAL_HEIGHT 40",
             "lv_obj_t *pve_node_view;",
             "lv_obj_t *pve_uptime;",
             "lv_obj_t *pve_cpu_model;",
             "lv_obj_t *pve_vm_list_button;",
+            "lv_obj_t *pve_vm_list_visual;",
+            "lv_obj_t *pve_vm_list_label;",
+            "lv_obj_t *pve_load_values[3];",
         ):
             self.assertIn(marker, UI)
         for label in ('"CPU"', '"系统负载"', '"内存"', '"存储"',
-                      '"处理器"', '"虚拟机列表"'):
+                      '"处理器"', '"虚拟机列表"', '"1分"', '"5分"', '"15分"'):
             self.assertIn(label, UI)
         creation = UI[
             UI.index("static void create_pve_page"):
             UI.index("static void show_nas_pools")
         ]
+        self.assertIn('make_label(metrics, "存储", 12, PVE_METRIC_ROW_HEIGHT + 10', creation)
+        self.assertIn('make_label(metrics, "内存", 180, PVE_METRIC_ROW_HEIGHT + 10', creation)
+        self.assertIn("lv_obj_set_size(s_ui.pve_vm_list_button, 464, PVE_VM_HIT_HEIGHT)", creation)
+        self.assertIn("(PVE_VM_HIT_HEIGHT - PVE_VM_VISUAL_HEIGHT) / 2", creation)
         self.assertNotIn("temperature", creation.lower())
 
     def test_pve_has_three_content_views_without_old_subnavigation(self):
@@ -190,7 +199,9 @@ class DashboardUiContractTest(unittest.TestCase):
     def test_pve_vm_list_has_four_aligned_rows_and_vertical_pager(self):
         for marker in (
             "#define VM_VISIBLE 4",
+            "#define PVE_VM_LIST_RULE_COUNT 9",
             "vm_name_buttons",
+            "vm_list_rules",
             "vm_list_previous",
             "vm_list_next",
             "vm_list_page",
@@ -198,6 +209,12 @@ class DashboardUiContractTest(unittest.TestCase):
             "420, 0",
             "44, 276",
             "30 + i * 58",
+            "166, 0, 1, 276",
+            "280, 0, 1, 276",
+            "328, 0, 1, 276",
+            "420, 0, 1, 276",
+            "0, 30, 420, 1",
+            "lv_obj_set_size(s_ui.vm_name_buttons[i], 166, 58)",
         ):
             self.assertIn(marker, UI)
         for header in ('"虚拟机"', '"IP"', '"CPU"', '"内存"'):
@@ -207,6 +224,33 @@ class DashboardUiContractTest(unittest.TestCase):
             UI.index("static void show_nas_pools")
         ]
         self.assertNotIn("vm_row_disk", pve_creation)
+
+    def test_pve_vm_detail_uses_two_by_three_metric_grid(self):
+        for marker in (
+            "#define PVE_VM_DETAIL_RULE_COUNT 4",
+            "vm_detail_rules",
+            "0, 54, 464, 1",
+            "231, 54, 1, 222",
+            "0, 127, 464, 1",
+            "0, 200, 464, 1",
+        ):
+            self.assertIn(marker, UI)
+        for label in ('"IP"', '"CPU"', '"内存"', '"磁盘"', '"运行时间"',
+                      '"Guest Agent"'):
+            self.assertIn(label, UI)
+        detail_update = UI[
+            UI.index("static void update_vm_detail(void)"):
+            UI.index("static void show_vm_detail")
+        ]
+        for combined_label in ('"IP  %s"', '"CPU  %s', '"内存  %s', '"磁盘  %s',
+                               '"运行时间  %s"', '"Guest Agent  在线"'):
+            self.assertNotIn(combined_label, detail_update)
+        detail_creation = UI[
+            UI.index('make_label(s_ui.vm_detail, "运行时间"'):
+            UI.index('make_label(s_ui.vm_detail, "Guest Agent"')
+        ]
+        self.assertIn("s_ui.vm_detail_uptime", detail_creation)
+        self.assertIn("&app_font_14, COLOR_TEXT", detail_creation)
 
     def test_pve_vm_events_route_name_detail_background_node_and_detail_list(self):
         for marker in (
