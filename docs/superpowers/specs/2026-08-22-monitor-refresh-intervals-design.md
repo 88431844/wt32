@@ -1,43 +1,42 @@
-# Monitor Refresh Intervals Design
+# 监控刷新间隔设计
 
-## Goal
+## 目标
 
-Change the NAS and PVE monitor refresh choices to 5, 10, 30, and 60 seconds, with 5 seconds as the default.
+将群晖 NAS 和 PVE 监控的刷新间隔改为 5 秒、10 秒、30 秒和 60 秒，默认值为 5 秒。
 
-## Scope
+## 范围
 
-- Keep the existing active-page polling behavior: only the visible NAS or PVE page performs provider requests.
-- Show exactly four refresh controls in Settings: `5S`, `10S`, `30S`, and `60S`.
-- Use 5 seconds when no refresh preference has been saved.
-- Preserve saved values of 10, 30, or 60 seconds.
-- Treat the formerly supported 120-second value, and every other unsupported value, as invalid and fall back to 5 seconds at startup.
-- Do not expose a 1-second option.
+- 保持现有的活动页面轮询机制：仅当前显示的群晖 NAS 或 PVE 页面发起数据请求。
+- 设置页面只显示四个刷新选项：`5S`、`10S`、`30S`、`60S`。
+- 未保存刷新设置时使用默认值 5 秒。
+- 已保存的 10 秒、30 秒或 60 秒设置保持不变。
+- 原先支持的 120 秒以及其他无效值在启动时回退为 5 秒。
+- 不提供 1 秒刷新选项。
 
-## Rationale
+## 设计依据
 
-A complete PVE refresh performs at least two HTTPS requests and can perform an additional request for every running guest. A complete Synology refresh performs multiple sequential SNMP requests, each with a bounded timeout. A 1-second interval therefore cannot reliably complete under slow or failing network conditions. Five seconds is the supported lower bound while retaining responsive monitoring.
+一次完整的 PVE 刷新至少包含两次 HTTPS 请求，并且可能为每个正在运行的虚拟机额外发起一次请求。一次完整的群晖刷新包含多次顺序执行的 SNMP 请求，每次请求均有超时上限。因此，在网络缓慢或目标设备无响应时，完整刷新无法稳定地在 1 秒内完成。5 秒作为支持的最小间隔，可以兼顾刷新及时性与请求稳定性。
 
-## Implementation
+## 实现设计
 
-The dashboard UI and live provider will share the same strict set of supported values through equivalent local validation:
+仪表盘界面和实时数据提供模块采用相同的严格合法值集合：
 
-- The UI initializes its refresh selection to 5 seconds, renders four buttons, accepts persisted values only when they are 5, 10, 30, or 60, and otherwise selects 5 seconds.
-- The provider uses a 5-second default and accepts refresh commands or persisted values only when they are 5, 10, 30, or 60.
-- Selecting a refresh button persists the value and immediately wakes the provider using the existing control API.
+- 界面的初始刷新值为 5 秒，创建四个选项按钮；读取持久化设置时仅接受 5、10、30、60，其他值统一选择 5 秒。
+- 实时数据提供模块的默认刷新值为 5 秒；接收刷新命令或读取持久化设置时，也仅接受 5、10、30、60。
+- 用户选择刷新选项后，界面立即保存该值，并通过现有控制接口唤醒实时数据提供任务，使新间隔即时生效。
 
-The scheduler remains single-threaded. Refresh duration is subtracted from the selected interval. If one collection takes longer than its interval, the next collection starts without an additional delay, but requests never overlap or queue concurrently.
+调度器继续使用单任务串行执行。每轮请求耗时会从所选刷新周期中扣除；如果单轮采集时间超过刷新周期，下一轮将在本轮完成后立即开始，但请求不会重叠，也不会并发堆积。
 
-## Error Handling And Compatibility
+## 错误处理与兼容性
 
-No NVS migration write is required. Unsupported persisted values are ignored in memory and resolve to the 5-second default. A subsequent user selection writes a supported value normally. Existing provider timeout and stale-data behavior remains unchanged.
+不需要主动改写 NVS 中的旧值。读取到不支持的持久化值时，仅在内存中回退到默认的 5 秒；用户之后选择任一合法选项时，再按正常流程保存新值。现有请求超时、错误提示和陈旧数据保留行为不变。
 
-## Testing
+## 测试
 
-Contract tests will verify:
+契约测试覆盖以下行为：
 
-- Settings exposes exactly `5S`, `10S`, `30S`, and `60S`.
-- UI and provider defaults are both 5 seconds.
-- UI and provider validation accept the same four values.
-- The old 120-second option is absent.
-- Existing active-page, persistence, immediate-wakeup, and non-overlapping scheduling behavior remains present.
-
+- 设置页面只提供 `5S`、`10S`、`30S`、`60S`。
+- 界面和实时数据提供模块的默认值都是 5 秒。
+- 界面和实时数据提供模块接受相同的四个合法值。
+- 旧的 120 秒选项不再出现。
+- 现有的活动页面轮询、设置持久化、立即唤醒和非并发调度行为保持不变。
