@@ -122,7 +122,10 @@ typedef struct {
     lv_obj_t *settings_nav_button;
     lv_obj_t *time_label;
     lv_obj_t *ip_label;
-    lv_obj_t *pve_identity;
+    lv_obj_t *pve_name;
+    lv_obj_t *pve_version;
+    lv_obj_t *pve_host;
+    lv_obj_t *pve_identity_dividers[2];
     lv_obj_t *pve_status_dot;
     lv_obj_t *pve_cpu_value;
     lv_obj_t *pve_memory_value;
@@ -543,6 +546,10 @@ static void apply_theme(void)
     lv_style_set_text_color(&s_text_styles[3], color(COLOR_RED));
     if (s_ui.top_bar != NULL)
         lv_obj_set_style_bg_color(s_ui.top_bar, color(COLOR_SURFACE), 0);
+    for (size_t i = 0; i < 2; ++i) {
+        if (s_ui.pve_identity_dividers[i] != NULL)
+            lv_obj_set_style_bg_color(s_ui.pve_identity_dividers[i], color(COLOR_LINE), 0);
+    }
     set_nav_button_state();
     set_rotation_button_state();
     set_refresh_button_state();
@@ -725,7 +732,11 @@ static void create_pve_page(lv_obj_t *page)
 
     lv_obj_t *summary = make_surface(s_ui.pve_overview, 8, 4, 464, 94);
     s_ui.pve_status_dot = make_status_dot(summary, 10, 13, 8, COLOR_GRAY);
-    s_ui.pve_identity = make_label(summary, "PVE 未连接", 24, 8, 430, &app_font_14, COLOR_MUTED);
+    s_ui.pve_name = make_label(summary, "name --", 24, 8, 132, &app_font_14, COLOR_TEXT);
+    s_ui.pve_identity_dividers[0] = make_rule(summary, 160, 7, 1, 20);
+    s_ui.pve_version = make_label(summary, "version --", 170, 8, 132, &app_font_14, COLOR_TEXT);
+    s_ui.pve_identity_dividers[1] = make_rule(summary, 306, 7, 1, 20);
+    s_ui.pve_host = make_label(summary, "IP --", 316, 8, 132, &app_font_14, COLOR_TEXT);
     make_label(summary, "CPU", 12, 32, 50, &app_font_14, COLOR_MUTED);
     make_label(summary, "内存", 125, 32, 55, &app_font_14, COLOR_MUTED);
     make_label(summary, "存储", 238, 32, 55, &app_font_14, COLOR_MUTED);
@@ -1535,19 +1546,19 @@ static void update_pve(void)
     const app_snapshot_t *snapshot = &s_ui.snapshot;
     char buffer[200], total[24], used[24];
     if (snapshot->pve_online) {
-        snprintf(buffer, sizeof(buffer), "pve name:%s version:%s %s 在线",
-                 snapshot->pve_name[0] ? snapshot->pve_name : "p330",
-                 snapshot->pve_version[0] ? snapshot->pve_version : "--", snapshot->pve_host);
-        lv_obj_set_style_text_color(s_ui.pve_identity, color(COLOR_GREEN), 0);
+        lv_label_set_text_fmt(s_ui.pve_name, "name %s",
+                              snapshot->pve_name[0] ? snapshot->pve_name : "p330");
+        lv_label_set_text_fmt(s_ui.pve_version, "version %s",
+                              snapshot->pve_version[0] ? snapshot->pve_version : "--");
+        lv_label_set_text_fmt(s_ui.pve_host, "IP %s",
+                              snapshot->pve_host[0] ? snapshot->pve_host : "--");
         lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GREEN), 0);
     } else {
-        snprintf(buffer, sizeof(buffer), "PVE %s  %s",
-                 snapshot->pve_configured ? "离线" : "未配置",
-                 snapshot->pve_last_error);
-        lv_obj_set_style_text_color(s_ui.pve_identity, color(COLOR_MUTED), 0);
+        lv_label_set_text(s_ui.pve_name, snapshot->pve_configured ? "PVE 离线" : "PVE 未配置");
+        lv_label_set_text(s_ui.pve_version, "--");
+        lv_label_set_text(s_ui.pve_host, "--");
         lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GRAY), 0);
     }
-    lv_label_set_text(s_ui.pve_identity, buffer);
     format_percent(buffer, sizeof(buffer), snapshot->pve_cpu_percent);
     lv_label_set_text(s_ui.pve_cpu_value, buffer);
     format_bytes(used, sizeof(used), snapshot->pve_memory_used);
@@ -1767,7 +1778,9 @@ static void show_monitor_message(app_monitor_t monitor, const char *message)
         lv_label_set_text(s_ui.nas_disk_empty, message);
         set_hidden(s_ui.nas_disk_empty, false);
     } else if (monitor == APP_MONITOR_PVE) {
-        lv_label_set_text(s_ui.pve_identity, message);
+        lv_label_set_text(s_ui.pve_name, message);
+        lv_label_set_text(s_ui.pve_version, "--");
+        lv_label_set_text(s_ui.pve_host, "--");
         lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GRAY), 0);
         for (int i = 0; i < VM_VISIBLE; ++i) set_hidden(s_ui.vm_rows[i], true);
     }

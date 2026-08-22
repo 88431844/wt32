@@ -48,7 +48,8 @@ class DashboardUiContractTest(unittest.TestCase):
         for unit in ('"B"', '"K"', '"M"', '"G"', '"T"'):
             self.assertIn(unit, UI)
         self.assertNotIn('"CPU %s"', UI)
-        self.assertNotIn('"IP %s"', UI)
+        update_nas = UI[UI.index("static void update_nas(void)\n{") :]
+        self.assertNotIn('"IP %s"', update_nas)
 
     def test_nas_disk_headers_sort_full_collection_and_keep_stable_pager(self):
         self.assertNotIn('"NAS 物理盘（未按池映射）"', UI)
@@ -128,6 +129,34 @@ class DashboardUiContractTest(unittest.TestCase):
         callback = UI[UI.index("static void page_event"):]
         callback = callback[:callback.index("static void", 20)]
         self.assertNotIn("DEVICE_KEY_HOME_PAGE", callback)
+
+    def test_pve_identity_row_uses_three_fields_and_two_theme_aware_separators(self):
+        for marker in ("pve_name", "pve_version", "pve_host", "pve_identity_dividers[2]"):
+            self.assertIn(marker, UI)
+        for marker in (
+            'make_label(summary, "name --", 24, 8, 132',
+            "make_rule(summary, 160, 7, 1, 20)",
+            'make_label(summary, "version --", 170, 8, 132',
+            "make_rule(summary, 306, 7, 1, 20)",
+            'make_label(summary, "IP --", 316, 8, 132',
+        ):
+            self.assertIn(marker, UI)
+
+        update_pve = UI[UI.index("static void update_pve(void)\n{") : UI.index("static void update_nas(void)\n{")]
+        for marker in ('"name %s"', '"version %s"', '"IP %s"'):
+            self.assertIn("lv_label_set_text_fmt", update_pve)
+            self.assertIn(marker, update_pve)
+        self.assertNotIn('"pve name:%s version:%s %s 在线"', update_pve)
+        self.assertNotIn(" 在线", update_pve)
+
+        monitor_message = UI[UI.index("static void show_monitor_message") : UI.index("void dashboard_ui_update")]
+        self.assertIn("lv_label_set_text(s_ui.pve_name, message)", monitor_message)
+        self.assertIn('lv_label_set_text(s_ui.pve_version, "--")', monitor_message)
+        self.assertIn('lv_label_set_text(s_ui.pve_host, "--")', monitor_message)
+
+        apply_theme = UI[UI.index("static void apply_theme(void)") : UI.index("static void page_event")]
+        self.assertIn("pve_identity_dividers", apply_theme)
+        self.assertIn("color(COLOR_LINE)", apply_theme)
 
 if __name__ == "__main__":
     unittest.main()
