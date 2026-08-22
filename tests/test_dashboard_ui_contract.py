@@ -1,12 +1,22 @@
 from pathlib import Path
+import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 UI = (ROOT / "components/dashboard_ui/dashboard_ui.c").read_text(encoding="utf-8")
 ICONS_HEADER = ROOT / "components/dashboard_ui/include/dashboard_icons.h"
 ICONS_SOURCE = ROOT / "components/dashboard_ui/assets/dashboard_icons.c"
+FONT_14 = ROOT / "components/dashboard_ui/fonts/app_font_14.c"
 
 class DashboardUiContractTest(unittest.TestCase):
+    def test_14px_font_covers_all_static_chinese_ui_text(self):
+        font_source = FONT_14.read_text(encoding="utf-8")
+        symbols_match = re.search(r"--symbols (.*?) --no-compress", font_source, re.DOTALL)
+        self.assertIsNotNone(symbols_match)
+        font_symbols = set(symbols_match.group(1))
+        ui_characters = set(re.findall(r"[\u4e00-\u9fff]", UI))
+        self.assertEqual(set(), ui_characters - font_symbols)
+
     def test_nas_pool_and_disk_lists_page_four_dynamic_items(self):
         self.assertIn("#define NAS_VISIBLE 4", UI)
         self.assertIn("#define NAS_DISK_VISIBLE 4", UI)
