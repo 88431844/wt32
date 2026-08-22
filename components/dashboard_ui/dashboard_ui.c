@@ -16,19 +16,25 @@
 
 LV_FONT_DECLARE(app_font_14);
 LV_FONT_DECLARE(app_font_18);
-LV_FONT_DECLARE(app_font_11);
 
 #define PAGE_COUNT 3
 #define VM_VISIBLE 5
 #define VM_NAV_VISIBLE 4
 #define NAS_VISIBLE 4
 #define NAS_DISK_VISIBLE 4
-#define NAS_METRICS_HEIGHT 42
-#define NAS_METRIC_CELL_WIDTH 68
-#define NAS_METRIC_DYNAMIC_COUNT 4
-#define NAS_FOOTER_IP_WIDTH 112
-#define NAS_FOOTER_UPTIME_WIDTH 48
-#define NAS_FOOTER_STATIC_Y 13
+#define NAS_METRICS_HEIGHT 62
+#define NAS_FOOTER_Y 226
+#define NAS_METRIC_CELL_WIDTH 55
+#define NAS_FOOTER_NETWORK_WIDTH 80
+#define NAS_FOOTER_IP_WIDTH 130
+#define NAS_FOOTER_UPTIME_WIDTH 58
+#define NAS_FOOTER_STATIC_Y 23
+#define NAS_POOL_ROW_HEIGHT 52
+#define NAS_POOL_ROW_STEP 55
+#define NAS_POOL_ICON_Y 7
+#define NAS_POOL_STATUS_Y 11
+#define NAS_POOL_TEXT_Y 7
+#define NAS_POOL_BAR_Y 38
 #define NAS_POOL_ROW_WIDTH_PAGED 420
 #define NAS_POOL_ROW_WIDTH_FULL 464
 #define NAS_POOL_BAR_WIDTH_PAGED 402
@@ -863,7 +869,7 @@ static void create_nas_page(lv_obj_t *page)
     s_ui.nas_overview = lv_obj_create(page);
     lv_obj_remove_style_all(s_ui.nas_overview);
     lv_obj_set_pos(s_ui.nas_overview, 0, 0);
-    lv_obj_set_size(s_ui.nas_overview, 480, 242);
+    lv_obj_set_size(s_ui.nas_overview, 480, NAS_FOOTER_Y);
     lv_obj_clear_flag(s_ui.nas_overview, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_ui.nas_overview, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(s_ui.nas_overview, nas_pool_list_event, LV_EVENT_CLICKED, NULL);
@@ -874,64 +880,70 @@ static void create_nas_page(lv_obj_t *page)
         s_ui.nas_rows[i] = lv_btn_create(s_ui.nas_overview);
         lv_obj_remove_style_all(s_ui.nas_rows[i]);
         lv_obj_add_style(s_ui.nas_rows[i], &s_muted_button_style, 0);
-        lv_obj_set_pos(s_ui.nas_rows[i], 8, 4 + i * 59);
-        lv_obj_set_size(s_ui.nas_rows[i], NAS_POOL_ROW_WIDTH_PAGED, 56);
+        lv_obj_set_pos(s_ui.nas_rows[i], 8, 4 + i * NAS_POOL_ROW_STEP);
+        lv_obj_set_size(s_ui.nas_rows[i], NAS_POOL_ROW_WIDTH_PAGED,
+                        NAS_POOL_ROW_HEIGHT);
         lv_obj_add_event_cb(s_ui.nas_rows[i], nas_pool_list_event, LV_EVENT_CLICKED,
                             (void *)(uintptr_t)i);
-        s_ui.nas_row_status_dots[i] = make_status_dot(s_ui.nas_rows[i], 9, 8, 8,
+        s_ui.nas_row_status_dots[i] = make_status_dot(s_ui.nas_rows[i], 9,
+                                                       NAS_POOL_STATUS_Y, 8,
                                                        COLOR_RED);
-        make_icon(s_ui.nas_rows[i], &dashboard_icon_pool, 20, 20, palette()->muted);
-        s_ui.nas_row_labels[i] = make_label(s_ui.nas_rows[i], "", 42, 3, 82,
+        make_icon(s_ui.nas_rows[i], &dashboard_icon_pool, 22, NAS_POOL_ICON_Y,
+                  palette()->muted);
+        s_ui.nas_row_labels[i] = make_label(s_ui.nas_rows[i], "", 42,
+                                             NAS_POOL_TEXT_Y, 82,
                                              &app_font_14, COLOR_TEXT);
-        s_ui.nas_row_descriptions[i] = make_label(s_ui.nas_rows[i], "", 126, 3, 70,
+        s_ui.nas_row_descriptions[i] = make_label(s_ui.nas_rows[i], "", 126,
+                                                   NAS_POOL_TEXT_Y, 70,
                                                    &app_font_14, COLOR_MUTED);
-        s_ui.nas_row_values[i] = make_label(s_ui.nas_rows[i], "", 198, 3, 212,
+        s_ui.nas_row_values[i] = make_label(s_ui.nas_rows[i], "", 198,
+                                             NAS_POOL_TEXT_Y, 212,
                                              &app_font_14, COLOR_TEXT);
         lv_obj_set_style_text_align(s_ui.nas_row_values[i], LV_TEXT_ALIGN_RIGHT, 0);
-        s_ui.nas_row_bars[i] = make_split_bar(s_ui.nas_rows[i], 9, 34,
+        s_ui.nas_row_bars[i] = make_split_bar(s_ui.nas_rows[i], 9, NAS_POOL_BAR_Y,
                                               NAS_POOL_BAR_WIDTH_PAGED, 6, 0, 100);
         lv_obj_clear_flag(s_ui.nas_row_status_dots[i], LV_OBJ_FLAG_CLICKABLE);
         lv_obj_clear_flag(s_ui.nas_row_bars[i], LV_OBJ_FLAG_CLICKABLE);
         set_hidden(s_ui.nas_rows[i], true);
     }
-    s_ui.nas_pool_previous = make_button(s_ui.nas_overview, "^", 436, 4, 36, 94,
+    s_ui.nas_pool_previous = make_button(s_ui.nas_overview, "^", 436, 4, 36, 82,
                                          nas_pool_page_event, (void *)(intptr_t)-1);
-    s_ui.nas_pool_page = make_label(s_ui.nas_overview, "1/1", 436, 108, 36,
+    s_ui.nas_pool_page = make_label(s_ui.nas_overview, "1/1", 436, 98, 36,
                                     &app_font_14, COLOR_MUTED);
     lv_obj_set_style_text_align(s_ui.nas_pool_page, LV_TEXT_ALIGN_CENTER, 0);
-    s_ui.nas_pool_next = make_button(s_ui.nas_overview, "v", 436, 140, 36, 98,
+    s_ui.nas_pool_next = make_button(s_ui.nas_overview, "v", 436, 124, 36, 98,
                                      nas_pool_page_event, (void *)(intptr_t)1);
     set_hidden(s_ui.nas_pool_previous, true);
     set_hidden(s_ui.nas_pool_page, true);
     set_hidden(s_ui.nas_pool_next, true);
 
-    s_ui.nas_detail = make_surface(page, 8, 4, 464, 238);
+    s_ui.nas_detail = make_surface(page, 8, 4, 464, 218);
     lv_obj_add_flag(s_ui.nas_detail, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(s_ui.nas_detail, nas_disk_list_event, LV_EVENT_CLICKED, NULL);
-    make_label(s_ui.nas_detail, "NAS 物理盘（未按池映射）", 12, 10, 238,
+    make_label(s_ui.nas_detail, "NAS 物理盘（未按池映射）", 12, 7, 238,
                &app_font_14, COLOR_MUTED);
-    s_ui.nas_disk_previous = make_button(s_ui.nas_detail, "^", 428, 0, 28, 98,
+    s_ui.nas_disk_previous = make_button(s_ui.nas_detail, "^", 428, 0, 28, 82,
                                          nas_disk_page_event, (void *)(intptr_t)-1);
-    s_ui.nas_disk_page = make_label(s_ui.nas_detail, "1/1", 428, 106, 28,
+    s_ui.nas_disk_page = make_label(s_ui.nas_detail, "1/1", 428, 94, 28,
                                     &app_font_14, COLOR_MUTED);
     lv_obj_set_style_text_align(s_ui.nas_disk_page, LV_TEXT_ALIGN_CENTER, 0);
-    s_ui.nas_disk_next = make_button(s_ui.nas_detail, "v", 428, 130, 28, 106,
+    s_ui.nas_disk_next = make_button(s_ui.nas_detail, "v", 428, 120, 28, 96,
                                      nas_disk_page_event, (void *)(intptr_t)1);
     set_hidden(s_ui.nas_disk_previous, true);
     set_hidden(s_ui.nas_disk_next, true);
     set_hidden(s_ui.nas_disk_page, true);
-    make_label(s_ui.nas_detail, "硬盘", 22, 44, 80, &app_font_14, COLOR_MUTED);
-    make_label(s_ui.nas_detail, "型号", 102, 44, 216, &app_font_14, COLOR_MUTED);
-    make_label(s_ui.nas_detail, "温度", 318, 44, 86, &app_font_14, COLOR_MUTED);
-    s_ui.nas_disk_empty = make_label(s_ui.nas_detail, "未获取到物理盘信息", 12, 112,
+    make_label(s_ui.nas_detail, "硬盘", 22, 36, 80, &app_font_14, COLOR_MUTED);
+    make_label(s_ui.nas_detail, "型号", 102, 36, 216, &app_font_14, COLOR_MUTED);
+    make_label(s_ui.nas_detail, "温度", 318, 36, 86, &app_font_14, COLOR_MUTED);
+    s_ui.nas_disk_empty = make_label(s_ui.nas_detail, "未获取到物理盘信息", 12, 96,
                                       440, &app_font_14, COLOR_MUTED);
     lv_obj_set_style_text_align(s_ui.nas_disk_empty, LV_TEXT_ALIGN_CENTER, 0);
     for (int i = 0; i < NAS_DISK_VISIBLE; ++i) {
         lv_obj_t *row = lv_obj_create(s_ui.nas_detail);
         s_ui.nas_disk_rows[i] = row;
         lv_obj_remove_style_all(row);
-        lv_obj_set_pos(row, 8, 64 + i * 40);
-        lv_obj_set_size(row, 412, 36);
+        lv_obj_set_pos(row, 8, 54 + i * 39);
+        lv_obj_set_size(row, 412, 35);
         lv_obj_set_style_border_color(row, color(COLOR_LINE), 0);
         lv_obj_set_style_border_width(row, 1, 0);
         lv_obj_set_style_border_side(row, LV_BORDER_SIDE_BOTTOM, 0);
@@ -949,7 +961,7 @@ static void create_nas_page(lv_obj_t *page)
     }
     set_hidden(s_ui.nas_detail, true);
 
-    lv_obj_t *footer = make_surface(page, 8, 246, 464, NAS_METRICS_HEIGHT);
+    lv_obj_t *footer = make_surface(page, 8, NAS_FOOTER_Y, 464, NAS_METRICS_HEIGHT);
     const int ip_x = 8;
     const int uptime_x = ip_x + NAS_FOOTER_IP_WIDTH + 2;
     const int divider_x = uptime_x + NAS_FOOTER_UPTIME_WIDTH + 2;
@@ -957,40 +969,42 @@ static void create_nas_page(lv_obj_t *page)
     make_icon(footer, &dashboard_icon_globe, ip_x, NAS_FOOTER_STATIC_Y,
               palette()->muted);
     s_ui.nas_ip_value = make_label(footer, "--", ip_x + 19, NAS_FOOTER_STATIC_Y,
-                                   NAS_FOOTER_IP_WIDTH - 21, &app_font_11, COLOR_TEXT);
+                                   NAS_FOOTER_IP_WIDTH - 21, &app_font_14, COLOR_TEXT);
     make_icon(footer, &dashboard_icon_uptime, uptime_x, NAS_FOOTER_STATIC_Y,
               palette()->muted);
     s_ui.nas_uptime_value = make_label(footer, "--", uptime_x + 18,
                                        NAS_FOOTER_STATIC_Y,
                                        NAS_FOOTER_UPTIME_WIDTH - 18,
-                                       &app_font_11, COLOR_TEXT);
-    make_rule(footer, divider_x, 6, 1, 30);
-    make_icon(footer, &dashboard_icon_processor, dynamic_x + 4, 13, palette()->muted);
-    s_ui.nas_cpu_value = make_label(footer, "--", dynamic_x + 22, 12, 42,
-                                    &app_font_14, COLOR_TEXT);
-    make_icon(footer, &dashboard_icon_memory, dynamic_x + NAS_METRIC_CELL_WIDTH + 4,
-              13, palette()->muted);
-    s_ui.nas_memory_value = make_label(footer, "--",
-                                       dynamic_x + NAS_METRIC_CELL_WIDTH + 22, 12, 42,
                                        &app_font_14, COLOR_TEXT);
-    make_rule(footer, dynamic_x + NAS_METRIC_CELL_WIDTH, 6, 1, 30);
+    make_rule(footer, divider_x, 8, 1, 46);
+    make_icon(footer, &dashboard_icon_processor, dynamic_x + 2, 23, palette()->muted);
+    s_ui.nas_cpu_value = make_label(footer, "--", dynamic_x + 20, 22, 34,
+                                    &app_font_14, COLOR_TEXT);
+    make_icon(footer, &dashboard_icon_memory, dynamic_x + NAS_METRIC_CELL_WIDTH + 2,
+              23, palette()->muted);
+    s_ui.nas_memory_value = make_label(footer, "--",
+                                       dynamic_x + NAS_METRIC_CELL_WIDTH + 20, 22, 34,
+                                       &app_font_14, COLOR_TEXT);
+    make_rule(footer, dynamic_x + NAS_METRIC_CELL_WIDTH, 8, 1, 46);
     make_icon(footer, &dashboard_icon_temperature,
-              dynamic_x + NAS_METRIC_CELL_WIDTH * 2 + 4, 13, palette()->muted);
+              dynamic_x + NAS_METRIC_CELL_WIDTH * 2 + 2, 23, palette()->muted);
     s_ui.nas_temperature_value = make_label(footer, "--",
-                                            dynamic_x + NAS_METRIC_CELL_WIDTH * 2 + 22,
-                                            12, 42, &app_font_14, COLOR_TEXT);
-    make_rule(footer, dynamic_x + NAS_METRIC_CELL_WIDTH * 2, 6, 1, 30);
-    make_rule(footer, dynamic_x + NAS_METRIC_CELL_WIDTH * 3, 6, 1, 30);
+                                            dynamic_x + NAS_METRIC_CELL_WIDTH * 2 + 20,
+                                            22, 34, &app_font_14, COLOR_TEXT);
+    make_rule(footer, dynamic_x + NAS_METRIC_CELL_WIDTH * 2, 8, 1, 46);
+    make_rule(footer, dynamic_x + NAS_METRIC_CELL_WIDTH * 3, 8, 1, 46);
     make_icon(footer, &dashboard_icon_upload,
-              dynamic_x + NAS_METRIC_CELL_WIDTH * 3 + 4, 4, palette()->muted);
+              dynamic_x + NAS_METRIC_CELL_WIDTH * 3 + 4, 10, palette()->muted);
     s_ui.nas_upload_value = make_label(footer, "--",
-                                       dynamic_x + NAS_METRIC_CELL_WIDTH * 3 + 18,
-                                       3, 48, &app_font_11, COLOR_TEXT);
+                                       dynamic_x + NAS_METRIC_CELL_WIDTH * 3 + 20,
+                                       7, NAS_FOOTER_NETWORK_WIDTH - 24,
+                                       &app_font_14, COLOR_TEXT);
     make_icon(footer, &dashboard_icon_download,
-              dynamic_x + NAS_METRIC_CELL_WIDTH * 3 + 4, 24, palette()->muted);
+              dynamic_x + NAS_METRIC_CELL_WIDTH * 3 + 4, 36, palette()->muted);
     s_ui.nas_download_value = make_label(footer, "--",
-                                         dynamic_x + NAS_METRIC_CELL_WIDTH * 3 + 18,
-                                         23, 48, &app_font_11, COLOR_TEXT);
+                                         dynamic_x + NAS_METRIC_CELL_WIDTH * 3 + 20,
+                                         33, NAS_FOOTER_NETWORK_WIDTH - 24,
+                                         &app_font_14, COLOR_TEXT);
     lv_obj_set_style_text_align(s_ui.nas_cpu_value, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_style_text_align(s_ui.nas_memory_value, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_style_text_align(s_ui.nas_temperature_value, LV_TEXT_ALIGN_LEFT, 0);

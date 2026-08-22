@@ -34,18 +34,25 @@ class DashboardUiContractTest(unittest.TestCase):
             self.assertIn(marker, UI)
 
     def test_nas_footer_has_final_balanced_geometry(self):
-        self.assertIn("#define NAS_METRICS_HEIGHT 42", UI)
-        self.assertIn("NAS_METRIC_CELL_WIDTH 68", UI)
-        self.assertIn("NAS_METRIC_DYNAMIC_COUNT 4", UI)
-        self.assertIn("NAS_FOOTER_IP_WIDTH 112", UI)
-        self.assertIn("NAS_FOOTER_UPTIME_WIDTH 48", UI)
-        self.assertIn("NAS_FOOTER_STATIC_Y 13", UI)
+        self.assertIn("#define NAS_METRICS_HEIGHT 62", UI)
+        self.assertIn("NAS_METRIC_CELL_WIDTH 55", UI)
+        self.assertIn("NAS_FOOTER_NETWORK_WIDTH 80", UI)
+        self.assertIn("NAS_FOOTER_IP_WIDTH 130", UI)
+        self.assertIn("NAS_FOOTER_UPTIME_WIDTH 58", UI)
+        self.assertIn("NAS_FOOTER_STATIC_Y 23", UI)
+        self.assertIn("NAS_FOOTER_Y 226", UI)
         self.assertIn("&dashboard_icon_globe", UI)
         self.assertNotIn("&dashboard_icon_ip", UI)
         for unit in ('"B"', '"K"', '"M"', '"G"', '"T"'):
             self.assertIn(unit, UI)
         self.assertNotIn('"CPU %s"', UI)
         self.assertNotIn('"IP %s"', UI)
+
+    def test_nas_pool_header_elements_share_one_baseline(self):
+        for marker in ("NAS_POOL_ROW_HEIGHT 52", "NAS_POOL_ROW_STEP 55",
+                       "NAS_POOL_ICON_Y 7", "NAS_POOL_STATUS_Y 11",
+                       "NAS_POOL_TEXT_Y 7", "NAS_POOL_BAR_Y 38"):
+            self.assertIn(marker, UI)
 
     def test_nas_pool_rows_fill_hidden_pager_column(self):
         for marker in ("NAS_POOL_ROW_WIDTH_PAGED 420", "NAS_POOL_ROW_WIDTH_FULL 464",
