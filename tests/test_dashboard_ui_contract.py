@@ -48,7 +48,9 @@ class DashboardUiContractTest(unittest.TestCase):
         for unit in ('"B"', '"K"', '"M"', '"G"', '"T"'):
             self.assertIn(unit, UI)
         self.assertNotIn('"CPU %s"', UI)
-        update_nas = UI[UI.index("static void update_nas(void)\n{") :]
+        nas_start = UI.index("static void update_nas(void)\n{")
+        nas_end = UI.index("static void", nas_start + len("static void update_nas(void)\n{"))
+        update_nas = UI[nas_start : nas_end]
         self.assertNotIn('"IP %s"', update_nas)
 
     def test_nas_disk_headers_sort_full_collection_and_keep_stable_pager(self):
@@ -131,8 +133,14 @@ class DashboardUiContractTest(unittest.TestCase):
         self.assertNotIn("DEVICE_KEY_HOME_PAGE", callback)
 
     def test_pve_identity_row_uses_three_fields_and_two_theme_aware_separators(self):
-        for marker in ("pve_name", "pve_version", "pve_host", "pve_identity_dividers[2]"):
+        for marker in (
+            "lv_obj_t *pve_name;",
+            "lv_obj_t *pve_version;",
+            "lv_obj_t *pve_host;",
+            "lv_obj_t *pve_identity_dividers[2];",
+        ):
             self.assertIn(marker, UI)
+        self.assertNotIn("lv_obj_t *pve_identity;", UI)
         for marker in (
             'make_label(summary, "name --", 24, 8, 132',
             "make_rule(summary, 160, 7, 1, 20)",
@@ -143,8 +151,11 @@ class DashboardUiContractTest(unittest.TestCase):
             self.assertIn(marker, UI)
 
         update_pve = UI[UI.index("static void update_pve(void)\n{") : UI.index("static void update_nas(void)\n{")]
-        for marker in ('"name %s"', '"version %s"', '"IP %s"'):
-            self.assertIn("lv_label_set_text_fmt", update_pve)
+        for marker in (
+            'lv_label_set_text_fmt(s_ui.pve_name, "name %s"',
+            'lv_label_set_text_fmt(s_ui.pve_version, "version %s"',
+            'lv_label_set_text_fmt(s_ui.pve_host, "IP %s"',
+        ):
             self.assertIn(marker, update_pve)
         self.assertNotIn('"pve name:%s version:%s %s 在线"', update_pve)
         self.assertNotIn(" 在线", update_pve)
@@ -155,8 +166,13 @@ class DashboardUiContractTest(unittest.TestCase):
         self.assertIn('lv_label_set_text(s_ui.pve_host, "--")', monitor_message)
 
         apply_theme = UI[UI.index("static void apply_theme(void)") : UI.index("static void page_event")]
-        self.assertIn("pve_identity_dividers", apply_theme)
-        self.assertIn("color(COLOR_LINE)", apply_theme)
+        compact_theme = "".join(apply_theme.split())
+        self.assertIn("for(size_ti=0;i<2;++i)", compact_theme)
+        self.assertIn("if(s_ui.pve_identity_dividers[i]!=NULL)", compact_theme)
+        self.assertIn(
+            "lv_obj_set_style_bg_color(s_ui.pve_identity_dividers[i],color(COLOR_LINE),0)",
+            compact_theme,
+        )
 
 if __name__ == "__main__":
     unittest.main()
