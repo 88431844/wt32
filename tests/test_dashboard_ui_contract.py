@@ -169,6 +169,7 @@ class DashboardUiContractTest(unittest.TestCase):
         self.assertIn("lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GREEN), 0)", online_branch)
         for marker in (
             "lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GRAY), 0)",
+            'lv_label_set_text(s_ui.pve_name, snapshot->pve_configured ? "PVE 离线" : "PVE 未配置")',
             'lv_label_set_text(s_ui.pve_version, "--")',
             'lv_label_set_text(s_ui.pve_host, "--")',
         ):
@@ -192,13 +193,15 @@ class DashboardUiContractTest(unittest.TestCase):
 
         monitor_message = UI[UI.index("static void show_monitor_message") : UI.index("void dashboard_ui_update")]
         compact_message = " ".join(monitor_message.split())
+        pve_message_start = compact_message.index("} else if (monitor == APP_MONITOR_PVE) {")
+        pve_message = compact_message[pve_message_start:]
         for marker in (
             "lv_label_set_text(s_ui.pve_name, message)",
             'lv_label_set_text(s_ui.pve_version, "--")',
             'lv_label_set_text(s_ui.pve_host, "--")',
             "lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GRAY), 0)",
         ):
-            self.assertIn(marker, compact_message)
+            self.assertIn(marker, pve_message)
         for field in ("pve_name", "pve_version", "pve_host"):
             self.assertNotIn(f"lv_obj_set_style_text_color(s_ui.{field}", UI)
 
