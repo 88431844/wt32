@@ -141,29 +141,48 @@ class DashboardUiContractTest(unittest.TestCase):
         ):
             self.assertIn(marker, UI)
         self.assertNotIn("lv_obj_t *pve_identity;", UI)
+        creation = UI[UI.index("lv_obj_t *summary = make_surface") : UI.index('make_label(summary, "CPU"')]
+        compact_creation = " ".join(creation.split())
         for marker in (
-            'make_label(summary, "name --", 24, 8, 132',
+            'make_label(summary, "name --", 24, 8, 132, &app_font_14, COLOR_TEXT)',
             "make_rule(summary, 160, 7, 1, 20)",
-            'make_label(summary, "version --", 170, 8, 132',
+            'make_label(summary, "version --", 170, 8, 132, &app_font_14, COLOR_TEXT)',
             "make_rule(summary, 306, 7, 1, 20)",
-            'make_label(summary, "IP --", 316, 8, 132',
+            'make_label(summary, "IP --", 316, 8, 132, &app_font_14, COLOR_TEXT)',
         ):
-            self.assertIn(marker, UI)
+            self.assertIn(marker, compact_creation)
 
         update_pve = UI[UI.index("static void update_pve(void)\n{") : UI.index("static void update_nas(void)\n{")]
+        compact_update = " ".join(update_pve.split())
         for marker in (
-            'lv_label_set_text_fmt(s_ui.pve_name, "name %s"',
-            'lv_label_set_text_fmt(s_ui.pve_version, "version %s"',
-            'lv_label_set_text_fmt(s_ui.pve_host, "IP %s"',
+            'lv_label_set_text_fmt(s_ui.pve_name, "name %s", snapshot->pve_name[0] ? snapshot->pve_name : "p330")',
+            'lv_label_set_text_fmt(s_ui.pve_version, "version %s", snapshot->pve_version[0] ? snapshot->pve_version : "--")',
+            'lv_label_set_text_fmt(s_ui.pve_host, "IP %s", snapshot->pve_host[0] ? snapshot->pve_host : "--")',
         ):
-            self.assertIn(marker, update_pve)
+            self.assertIn(marker, compact_update)
+        for marker in (
+            "lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GREEN), 0)",
+            'lv_label_set_text(s_ui.pve_name, snapshot->pve_configured ? "PVE 离线" : "PVE 未配置")',
+            'lv_label_set_text(s_ui.pve_version, "--")',
+            'lv_label_set_text(s_ui.pve_host, "--")',
+            "lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GRAY), 0)",
+        ):
+            self.assertIn(marker, compact_update)
         self.assertNotIn('"pve name:%s version:%s %s 在线"', update_pve)
-        self.assertNotIn(" 在线", update_pve)
+        self.assertNotIn("在线", update_pve)
 
         monitor_message = UI[UI.index("static void show_monitor_message") : UI.index("void dashboard_ui_update")]
-        self.assertIn("lv_label_set_text(s_ui.pve_name, message)", monitor_message)
-        self.assertIn('lv_label_set_text(s_ui.pve_version, "--")', monitor_message)
-        self.assertIn('lv_label_set_text(s_ui.pve_host, "--")', monitor_message)
+        compact_message = " ".join(monitor_message.split())
+        for marker in (
+            "lv_label_set_text(s_ui.pve_name, message)",
+            'lv_label_set_text(s_ui.pve_version, "--")',
+            'lv_label_set_text(s_ui.pve_host, "--")',
+            "lv_obj_set_style_bg_color(s_ui.pve_status_dot, color(COLOR_GRAY), 0)",
+        ):
+            self.assertIn(marker, compact_message)
+        for field in ("pve_name", "pve_version", "pve_host"):
+            self.assertNotIn(f"lv_obj_set_style_text_color(s_ui.{field}", update_pve)
+            self.assertNotIn(f"lv_obj_set_style_text_color(s_ui.{field}", monitor_message)
 
         apply_theme = UI[UI.index("static void apply_theme(void)") : UI.index("static void page_event")]
         compact_theme = "".join(apply_theme.split())
