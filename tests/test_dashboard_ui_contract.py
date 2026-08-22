@@ -12,6 +12,28 @@ class DashboardUiContractTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.source = UI.read_text(encoding="utf-8")
 
+    def _function_body(self, name: str) -> str:
+        marker = f"static void {name}("
+        search = 0
+        while True:
+            start = self.source.find(marker, search)
+            if start < 0:
+                self.fail(f"function definition not found: {name}")
+            signature_end = self.source.find(")", start)
+            opening = self.source.find("{", signature_end)
+            if self.source[signature_end + 1:opening].strip() == "":
+                break
+            search = signature_end + 1
+        depth = 0
+        for index in range(opening, len(self.source)):
+            if self.source[index] == "{":
+                depth += 1
+            elif self.source[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    return self.source[opening:index + 1]
+        self.fail(f"unterminated function body: {name}")
+
     def test_only_nas_pve_and_settings_pages_are_created(self) -> None:
         self.assertIn("#define PAGE_COUNT 3", self.source)
         self.assertIn("create_pve_page", self.source)
@@ -145,6 +167,61 @@ class DashboardUiContractTest(unittest.TestCase):
                 f"lv_obj_clear_flag({field}, LV_OBJ_FLAG_CLICKABLE)",
                 self.source,
             )
+
+    def test_nas_interactions_have_localized_state_and_paging_contracts(self) -> None:
+        pools = self._function_body("show_nas_pools")
+        self.assertIn("s_ui.nas_disks_visible = false", pools)
+        self.assertIn("set_hidden(s_ui.nas_overview, false)", pools)
+        self.assertIn("set_hidden(s_ui.nas_detail, true)", pools)
+
+        disks = self._function_body("show_nas_disks")
+        self.assertIn("s_ui.nas_disks_visible = true", disks)
+        self.assertIn("set_hidden(s_ui.nas_overview, true)", disks)
+        self.assertIn("set_hidden(s_ui.nas_detail, false)", disks)
+        self.assertIn("update_nas_disks()", disks)
+
+        pool_event = self._function_body("nas_pool_list_event")
+        self.assertIn("lv_event_get_code(event) == LV_EVENT_CLICKED", pool_event)
+        self.assertIn("show_nas_disks()", pool_event)
+
+        disk_event = self._function_body("nas_disk_list_event")
+        self.assertIn("lv_event_get_code(event) != LV_EVENT_CLICKED", disk_event)
+        self.assertIn("target == s_ui.nas_disk_previous", disk_event)
+        self.assertIn("target == s_ui.nas_disk_next", disk_event)
+        self.assertIn("show_nas_pools()", disk_event)
+        self.assertLess(
+            disk_event.index("target == s_ui.nas_disk_previous"),
+            disk_event.index("show_nas_pools()"),
+        )
+        self.assertLess(
+            disk_event.index("target == s_ui.nas_disk_next"),
+            disk_event.index("show_nas_pools()"),
+        )
+
+        page_event = self._function_body("nas_disk_page_event")
+        self.assertIn("direction < 0 && s_ui.nas_disk_offset >= NAS_DISK_VISIBLE", page_event)
+        self.assertIn("s_ui.nas_disk_offset -= NAS_DISK_VISIBLE", page_event)
+        self.assertIn("direction > 0 &&", page_event)
+        self.assertIn("s_ui.nas_disk_offset + NAS_DISK_VISIBLE < snapshot_disk_count", page_event)
+        self.assertIn("s_ui.nas_disk_offset <= APP_MAX_NAS_DISKS - NAS_DISK_VISIBLE", page_event)
+        self.assertIn("s_ui.nas_disk_offset += NAS_DISK_VISIBLE", page_event)
+        self.assertIn("update_nas_disks()", page_event)
+
+        update_disks = self._function_body("update_nas_disks")
+        self.assertIn("const int last_page_offset = snapshot_disk_count > NAS_DISK_VISIBLE ?", update_disks)
+        self.assertIn(
+            "((snapshot_disk_count - 1) / NAS_DISK_VISIBLE) * NAS_DISK_VISIBLE",
+            update_disks,
+        )
+        self.assertIn(
+            "if (s_ui.nas_disk_offset > last_page_offset) s_ui.nas_disk_offset = last_page_offset;",
+            update_disks,
+        )
+
+        self.assertNotIn('make_label(s_ui.nas_detail, "状态"', self.source)
+        self.assertIn('make_label(s_ui.nas_detail, "硬盘", 22, 44, 80', self.source)
+        self.assertIn('make_label(s_ui.nas_detail, "型号", 102, 44, 216', self.source)
+        self.assertIn('make_label(s_ui.nas_detail, "温度", 318, 44, 86', self.source)
 
     def test_nas_disk_table_omits_capacity(self) -> None:
         self.assertNotIn("nas_disk_capacities", self.source)

@@ -817,10 +817,9 @@ static void create_nas_page(lv_obj_t *page)
     set_hidden(s_ui.nas_disk_previous, true);
     set_hidden(s_ui.nas_disk_next, true);
     set_hidden(s_ui.nas_disk_page, true);
-    make_label(s_ui.nas_detail, "状态", 12, 44, 40, &app_font_14, COLOR_MUTED);
-    make_label(s_ui.nas_detail, "硬盘", 52, 44, 70, &app_font_14, COLOR_MUTED);
-    make_label(s_ui.nas_detail, "型号", 122, 44, 220, &app_font_14, COLOR_MUTED);
-    make_label(s_ui.nas_detail, "温度", 342, 44, 70, &app_font_14, COLOR_MUTED);
+    make_label(s_ui.nas_detail, "硬盘", 22, 44, 80, &app_font_14, COLOR_MUTED);
+    make_label(s_ui.nas_detail, "型号", 102, 44, 216, &app_font_14, COLOR_MUTED);
+    make_label(s_ui.nas_detail, "温度", 318, 44, 86, &app_font_14, COLOR_MUTED);
     s_ui.nas_disk_empty = make_label(s_ui.nas_detail, "未获取到物理盘信息", 12, 112,
                                       440, &app_font_14, COLOR_MUTED);
     lv_obj_set_style_text_align(s_ui.nas_disk_empty, LV_TEXT_ALIGN_CENTER, 0);
