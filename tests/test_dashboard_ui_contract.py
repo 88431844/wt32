@@ -34,19 +34,52 @@ class DashboardUiContractTest(unittest.TestCase):
             self.assertIn(marker, UI)
 
     def test_nas_footer_has_final_balanced_geometry(self):
-        self.assertIn("#define NAS_METRICS_HEIGHT 62", UI)
+        self.assertIn("#define NAS_METRICS_HEIGHT 52", UI)
         self.assertIn("NAS_METRIC_CELL_WIDTH 55", UI)
         self.assertIn("NAS_FOOTER_NETWORK_WIDTH 80", UI)
         self.assertIn("NAS_FOOTER_IP_WIDTH 130", UI)
         self.assertIn("NAS_FOOTER_UPTIME_WIDTH 58", UI)
-        self.assertIn("NAS_FOOTER_STATIC_Y 23", UI)
-        self.assertIn("NAS_FOOTER_Y 226", UI)
+        self.assertIn("NAS_FOOTER_STATIC_Y 18", UI)
+        self.assertIn("NAS_FOOTER_Y 236", UI)
+        self.assertIn("make_network_metric_row", UI)
+        self.assertIn("LV_FLEX_ALIGN_CENTER", UI)
         self.assertIn("&dashboard_icon_globe", UI)
         self.assertNotIn("&dashboard_icon_ip", UI)
         for unit in ('"B"', '"K"', '"M"', '"G"', '"T"'):
             self.assertIn(unit, UI)
         self.assertNotIn('"CPU %s"', UI)
         self.assertNotIn('"IP %s"', UI)
+
+    def test_nas_disk_headers_sort_full_collection_and_keep_stable_pager(self):
+        self.assertNotIn('"NAS 物理盘（未按池映射）"', UI)
+        for marker in ("nas_disk_sort_event", "nas_disk_sort(",
+                       "nas_disk_sort_key", "nas_disk_sort_descending",
+                       "nas_disk_sort_buttons", "lv_event_stop_bubbling(event)",
+                       "nas_disk_pager", "nas_disk_pager_event",
+                       "LV_STATE_DISABLED", "LV_OPA_30",
+                       "420, 0", "44, 228", "4, 0, 36, 82",
+                       "34 + i * 46", "412, 46"):
+            self.assertIn(marker, UI)
+        sort_call = UI.index("nas_disk_sort(snapshot->nas_disks")
+        page_slice = UI.index("snapshot->nas_disks[s_ui.nas_disk_offset + i]")
+        self.assertLess(sort_call, page_slice)
+
+    def test_opening_disk_list_restores_default_sort_and_first_page(self):
+        callback = UI[UI.index("static void show_nas_disks") :]
+        callback = callback[: callback.index("static void", 20)]
+        for marker in ("s_ui.nas_disk_sort_key = NAS_DISK_SORT_ID",
+                       "s_ui.nas_disk_sort_descending = false",
+                       "s_ui.nas_disk_offset = 0"):
+            self.assertIn(marker, callback)
+            self.assertLess(callback.index(marker), callback.index("update_nas_disks()"))
+
+    def test_top_brand_icon_and_label_are_both_vertically_centered(self):
+        button = UI[UI.index("static lv_obj_t *make_button"):]
+        button = button[:button.index("static void", 20)]
+        self.assertIn("lv_obj_center(text_label)", button)
+        icon_button = UI[UI.index("static lv_obj_t *make_icon_button"):]
+        icon_button = icon_button[:icon_button.index("static void", 20)]
+        self.assertIn("(height - 16) / 2", icon_button)
 
     def test_nas_pool_header_elements_share_one_baseline(self):
         for marker in ("NAS_POOL_ROW_HEIGHT 52", "NAS_POOL_ROW_STEP 55",

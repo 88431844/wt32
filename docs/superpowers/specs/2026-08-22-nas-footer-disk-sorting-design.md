@@ -21,6 +21,7 @@ Reduce the visual weight of the NAS footer while keeping its data readable, and 
 - Replace the passive `硬盘`, `型号`, and `温度` labels with compact sortable header buttons.
 - Show the active column's direction with an up or down icon. Inactive columns do not show a direction icon.
 - The initial order is disk identifier ascending.
+- Every transition from the pool list into the disk list restores disk identifier ascending and page one.
 - Clicking the active column reverses its direction.
 - Clicking another column selects that column and starts in ascending order.
 
@@ -39,6 +40,7 @@ Reduce the visual weight of the NAS footer while keeping its data readable, and 
 
 - Header-button clicks only change sorting and must not return to the storage-pool list.
 - Both pager buttons remain visible on every page so the pager column keeps a stable shape.
+- Use a 44 px protected pager rail with 36 px buttons. Taps anywhere in this rail, including the page-label gaps, must stay in the disk view.
 - The up button is dimmed and disabled on the first page; the down button is dimmed and disabled on the last page.
 - Pager-button clicks only change pages and must not return to the storage-pool list.
 - Clicking the remaining disk-list area returns to the storage-pool list, preserving the existing behavior.

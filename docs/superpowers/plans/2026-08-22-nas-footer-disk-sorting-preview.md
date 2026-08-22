@@ -112,6 +112,8 @@ Use a dimmed disabled style instead of hiding either button:
 .pager button:disabled{opacity:.32;color:var(--muted)}
 ```
 
+Use a 44 px pager rail with 36 px buttons and stop all rail clicks from reaching the disk-panel return handler. Reset disk sorting to ID ascending and page one whenever a pool row opens the disk list.
+
 - [ ] **Step 5: Verify source-level behavior markers**
 
 Run:
