@@ -10,6 +10,56 @@
 extern "C" {
 #endif
 
+#define APP_MAX_PVE_GUESTS 12
+#define APP_MAX_NAS_POOLS 8
+#define APP_MAX_NAS_DISKS 8
+#define APP_TEXT_SMALL 32
+#define APP_TEXT_MEDIUM 64
+#define APP_TEXT_LARGE 128
+
+typedef enum {
+    APP_MONITOR_NONE = 0,
+    APP_MONITOR_NAS = 1,
+    APP_MONITOR_PVE = 2,
+} app_monitor_t;
+
+typedef struct {
+    uint32_t vmid;
+    char name[APP_TEXT_MEDIUM];
+    char kind[8];
+    char ipv4_address[16];
+    bool running;
+    float cpu_percent;
+    uint64_t memory_used;
+    uint64_t memory_total;
+    uint64_t disk_used;
+    uint64_t disk_total;
+    uint32_t cpu_cores;
+    uint32_t uptime_seconds;
+    bool guest_agent;
+} pve_guest_t;
+
+typedef struct {
+    char name[APP_TEXT_MEDIUM];
+    char description[APP_TEXT_LARGE];
+    char filesystem[APP_TEXT_SMALL];
+    char raid_type[APP_TEXT_SMALL];
+    uint64_t used_bytes;
+    uint64_t total_bytes;
+    uint64_t free_bytes;
+    bool healthy;
+} nas_pool_t;
+
+typedef struct {
+    char id[APP_TEXT_SMALL];
+    char model[APP_TEXT_MEDIUM];
+    bool healthy;
+    int temperature_c;
+    bool temperature_valid;
+    uint64_t capacity_bytes;
+    bool capacity_valid;
+} nas_disk_t;
+
 typedef struct {
     uint32_t revision;
     uint32_t uptime_seconds;
@@ -18,21 +68,54 @@ typedef struct {
     uint8_t second;
     bool wifi_connected;
     char ip_address[16];
-    float byd_price;
-    float byd_change_percent;
-    int weather_temperature;
-    int weather_humidity;
-    int pve_cpu;
-    int pve_memory;
-    int pve_storage;
-    int nas_temperatures[4];
-    int antigravity_remaining;
-    int alert_critical;
-    int alert_warning;
-    int alert_info;
+
+    bool pve_online;
+    bool pve_configured;
+    char pve_name[APP_TEXT_MEDIUM];
+    char pve_version[APP_TEXT_SMALL];
+    char pve_host[32];
+    float pve_cpu_percent;
+    uint64_t pve_memory_used;
+    uint64_t pve_memory_total;
+    uint64_t pve_storage_used;
+    uint64_t pve_storage_total;
+    float pve_load[3];
+    uint32_t pve_cpu_cores;
+    uint32_t pve_guest_count;
+    uint32_t pve_running_count;
+    pve_guest_t pve_guests[APP_MAX_PVE_GUESTS];
+    char pve_last_error[APP_TEXT_LARGE];
+    bool pve_stale;
+    uint32_t pve_last_success_ms;
+
+    bool nas_online;
+    bool nas_configured;
+    char nas_host[32];
+    char nas_model[APP_TEXT_MEDIUM];
+    float nas_cpu_percent;
+    bool nas_cpu_valid;
+    float nas_memory_percent;
+    bool nas_memory_valid;
+    int nas_temperature;
+    bool nas_temperature_valid;
+    uint64_t nas_rx_bytes_per_second;
+    uint64_t nas_tx_bytes_per_second;
+    bool nas_network_rate_valid;
+    uint32_t nas_uptime_seconds;
+    bool nas_uptime_valid;
+    uint32_t nas_pool_count;
+    nas_pool_t nas_pools[APP_MAX_NAS_POOLS];
+    uint32_t nas_disk_count;
+    nas_disk_t nas_disks[APP_MAX_NAS_DISKS];
+    char nas_last_error[APP_TEXT_LARGE];
+    bool nas_stale;
+    uint32_t nas_last_success_ms;
 } app_snapshot_t;
 
 QueueHandle_t app_model_start_mock_provider(void);
+QueueHandle_t app_model_start_live_provider(void);
+void app_model_set_active_monitor(app_monitor_t monitor);
+void app_model_set_refresh_seconds(uint8_t seconds);
 
 #ifdef __cplusplus
 }

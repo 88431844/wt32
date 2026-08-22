@@ -26,7 +26,7 @@
 - 修改：`components/dashboard_ui/dashboard_ui.c`
 - 修改：`components/app_model/live_provider.c`
 
-- [ ] **步骤 1：先修改界面契约测试**
+- [x] **步骤 1：先修改界面契约测试**
 
 将 `test_settings_offer_four_refresh_intervals_and_active_page_polling` 改为验证以下内容：
 
@@ -44,7 +44,7 @@ def test_settings_offer_supported_refresh_intervals_and_default_to_five_seconds(
     self.assertIn("app_model_set_active_monitor", self.source)
 ```
 
-- [ ] **步骤 2：补充 provider 契约测试**
+- [x] **步骤 2：补充 provider 契约测试**
 
 在 `MonitorMigrationContractTest` 中新增：
 
@@ -60,7 +60,7 @@ def test_provider_supports_same_refresh_intervals_and_defaults_to_five_seconds(s
     self.assertIn("elapsed < interval ? interval - elapsed : 0", source)
 ```
 
-- [ ] **步骤 3：运行目标测试并确认按预期失败**
+- [x] **步骤 3：运行目标测试并确认按预期失败**
 
 运行：
 
@@ -72,7 +72,7 @@ python3 -m unittest \
 
 预期：两个测试均为 `FAIL`；失败原因分别是界面仍使用 10 秒默认值及 `10/30/60/120`，provider 仍使用 10 秒默认值及旧白名单。
 
-- [ ] **步骤 4：实现界面刷新选项和回退逻辑**
+- [x] **步骤 4：实现界面刷新选项和回退逻辑**
 
 在 `components/dashboard_ui/dashboard_ui.c` 中将相关代码修改为：
 
@@ -102,7 +102,7 @@ if (device_settings_get_u8(DEVICE_KEY_REFRESH, &saved_refresh) == ESP_OK &&
 else s_refresh_seconds = 5;
 ```
 
-- [ ] **步骤 5：实现 provider 默认值和白名单**
+- [x] **步骤 5：实现 provider 默认值和白名单**
 
 在 `components/app_model/live_provider.c` 中修改为：
 
@@ -117,13 +117,13 @@ static bool valid_refresh_seconds(uint8_t seconds)
 
 保持 `app_model_set_refresh_seconds()`、启动时 NVS 校验以及现有 `elapsed` 周期计算继续调用该白名单或默认常量。
 
-- [ ] **步骤 6：运行目标测试并确认通过**
+- [x] **步骤 6：运行目标测试并确认通过**
 
 运行步骤 3 的同一条命令。
 
 预期：两个测试均为 `OK`。
 
-- [ ] **步骤 7：运行完整契约测试**
+- [x] **步骤 7：运行完整契约测试**
 
 运行：
 
@@ -133,7 +133,7 @@ python3 -m unittest discover -s tests -v
 
 预期：全部测试通过，无 `FAIL` 或 `ERROR`。
 
-- [ ] **步骤 8：运行固件构建验证**
+- [x] **步骤 8：运行固件构建验证**
 
 运行：
 
@@ -143,7 +143,7 @@ idf.py build
 
 预期：命令退出码为 0，固件链接成功。
 
-- [ ] **步骤 9：检查最终差异**
+- [x] **步骤 9：检查最终差异**
 
 运行：
 

@@ -6,6 +6,7 @@
 #include "app_model.h"
 #include "board_wt32.h"
 #include "dashboard_ui.h"
+#include "device_settings.h"
 #include "esp_err.h"
 #include "esp_check.h"
 #include "esp_heap_caps.h"
@@ -71,6 +72,30 @@ static esp_err_t init_nvs(void)
         err = nvs_flash_init();
     }
     return err;
+}
+
+static esp_err_t bootstrap_monitor_settings(void)
+{
+#ifdef WT32_BOOTSTRAP_SETTINGS
+    const struct {
+        const char *key;
+        const char *value;
+    } settings[] = {
+        {DEVICE_KEY_PVE_HOST, WT32_BOOTSTRAP_PVE_HOST},
+        {DEVICE_KEY_PVE_NODE, WT32_BOOTSTRAP_PVE_NODE},
+        {DEVICE_KEY_PVE_TOKEN_ID, WT32_BOOTSTRAP_PVE_TOKEN_ID},
+        {DEVICE_KEY_PVE_SECRET, WT32_BOOTSTRAP_PVE_SECRET},
+        {DEVICE_KEY_PVE_CA, WT32_BOOTSTRAP_PVE_CA},
+        {DEVICE_KEY_NAS_HOST, WT32_BOOTSTRAP_NAS_HOST},
+        {DEVICE_KEY_SNMP_COMMUNITY, WT32_BOOTSTRAP_SNMP_COMMUNITY},
+    };
+    for (size_t i = 0; i < sizeof(settings) / sizeof(settings[0]); ++i) {
+        esp_err_t err = device_settings_set_string(settings[i].key, settings[i].value);
+        if (err != ESP_OK) return err;
+    }
+    ESP_LOGI(TAG, "Bootstrap monitor settings stored");
+#endif
+    return ESP_OK;
 }
 
 static esp_err_t init_lvgl(void)
@@ -155,10 +180,18 @@ static void ui_task(void *argument)
 void app_main(void)
 {
     ESP_ERROR_CHECK(init_nvs());
+    ESP_ERROR_CHECK(bootstrap_monitor_settings());
     ESP_ERROR_CHECK(wt32_board_init());
+    uint8_t rotate_180 = 1;
+    uint8_t brightness = 72;
+    (void)device_settings_get_u8(DEVICE_KEY_ROTATE_180, &rotate_180);
+    (void)device_settings_get_u8(DEVICE_KEY_BRIGHTNESS, &brightness);
+    if (brightness < 10 || brightness > 100) brightness = 72;
+    ESP_ERROR_CHECK(wt32_board_set_rotation_180(rotate_180 != 0));
+    wt32_board_set_brightness(brightness);
     ESP_ERROR_CHECK(network_manager_start());
 
-    QueueHandle_t snapshot_queue = app_model_start_mock_provider();
+    QueueHandle_t snapshot_queue = app_model_start_live_provider();
     ESP_ERROR_CHECK(snapshot_queue != NULL ? ESP_OK : ESP_ERR_NO_MEM);
 
     BaseType_t created = xTaskCreatePinnedToCore(

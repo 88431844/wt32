@@ -15,6 +15,7 @@ BOARD_HEADER = (
     / "include"
     / "board_wt32.h"
 )
+MAIN_SOURCE = (Path(__file__).resolve().parents[1] / "main" / "app_main.c")
 
 
 class BoardOrientationContractTest(unittest.TestCase):
@@ -62,6 +63,14 @@ class BoardOrientationContractTest(unittest.TestCase):
         )
         self.assertIn("x = (TOUCH_NATIVE_HEIGHT - 1) - raw_y;", self.source)
         self.assertIn("x = raw_y;", self.source)
+
+    def test_startup_applies_persisted_rotation_and_brightness(self) -> None:
+        main = MAIN_SOURCE.read_text(encoding="utf-8")
+        self.assertIn("DEVICE_KEY_ROTATE_180", main)
+        self.assertIn("DEVICE_KEY_BRIGHTNESS", main)
+        self.assertIn("if (brightness < 10 || brightness > 100)", main)
+        self.assertIn("wt32_board_set_rotation_180(rotate_180 != 0)", main)
+        self.assertIn("wt32_board_set_brightness(brightness)", main)
 
 
 if __name__ == "__main__":
