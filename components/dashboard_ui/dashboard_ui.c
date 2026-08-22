@@ -797,6 +797,8 @@ static void create_nas_page(lv_obj_t *page)
                                              &app_font_14, COLOR_TEXT);
         lv_obj_set_style_text_align(s_ui.nas_row_values[i], LV_TEXT_ALIGN_RIGHT, 0);
         s_ui.nas_row_bars[i] = make_split_bar(s_ui.nas_rows[i], 9, 34, 446, 6, 0, 100);
+        lv_obj_clear_flag(s_ui.nas_row_status_dots[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(s_ui.nas_row_bars[i], LV_OBJ_FLAG_CLICKABLE);
         set_hidden(s_ui.nas_rows[i], true);
     }
 
@@ -839,6 +841,7 @@ static void create_nas_page(lv_obj_t *page)
         s_ui.nas_disk_models[i] = make_label(row, "--", 94, 9, 216, &app_font_14, COLOR_TEXT);
         s_ui.nas_disk_temperatures[i] = make_label(row, "--", 310, 9, 86,
                                                     &app_font_14, COLOR_TEXT);
+        lv_obj_clear_flag(s_ui.nas_disk_dots[i], LV_OBJ_FLAG_CLICKABLE);
         set_hidden(row, true);
     }
     set_hidden(s_ui.nas_detail, true);

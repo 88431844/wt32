@@ -135,6 +135,17 @@ class DashboardUiContractTest(unittest.TestCase):
             self.source,
         )
 
+    def test_nas_row_visual_children_do_not_capture_clicks(self) -> None:
+        for field in (
+            "s_ui.nas_row_status_dots[i]",
+            "s_ui.nas_row_bars[i]",
+            "s_ui.nas_disk_dots[i]",
+        ):
+            self.assertIn(
+                f"lv_obj_clear_flag({field}, LV_OBJ_FLAG_CLICKABLE)",
+                self.source,
+            )
+
     def test_nas_disk_table_omits_capacity(self) -> None:
         self.assertNotIn("nas_disk_capacities", self.source)
         self.assertNotIn("disk->capacity_valid", self.source)
