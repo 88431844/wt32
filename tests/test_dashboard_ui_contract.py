@@ -226,12 +226,31 @@ class DashboardUiContractTest(unittest.TestCase):
             "lv_obj_set_size(s_ui.vm_name_buttons[i], 166, 58)",
         ):
             self.assertIn(marker, UI)
-        for header in ('"虚拟机"', '"IP"', '"CPU"', '"内存"'):
+        for header in ('"虚拟机"', '"IP"', '"vcpu"', '"内存"'):
             self.assertIn(header, UI)
         pve_creation = UI[
             UI.index("static void create_pve_page"):
             UI.index("static void show_nas_pools")
         ]
+        self.assertIn(
+            's_ui.vm_header_cpu = make_label(s_ui.pve_vm_list, "vcpu", 288, 6, 40,',
+            pve_creation,
+        )
+        self.assertNotIn(
+            's_ui.vm_header_cpu = make_label(s_ui.pve_vm_list, "CPU"',
+            pve_creation,
+        )
+        pve_update = UI[
+            UI.index("static void update_pve(void)\n{"):
+            UI.index("static void update_nas(void)\n{")
+        ]
+        self.assertIn("if (guest->cpu_cores > 0)", pve_update)
+        self.assertIn(
+            'lv_label_set_text_fmt(s_ui.vm_row_cpu[i], "%" PRIu32, guest->cpu_cores);',
+            pve_update,
+        )
+        self.assertIn('lv_label_set_text(s_ui.vm_row_cpu[i], "--");', pve_update)
+        self.assertNotIn("format_percent(cpu", pve_update)
         self.assertNotIn("vm_row_disk", pve_creation)
 
     def test_pve_vm_detail_uses_two_by_three_metric_grid(self):

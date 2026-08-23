@@ -827,7 +827,7 @@ static void create_pve_page(lv_obj_t *page)
                                &app_font_14, COLOR_TEXT);
     s_ui.vm_header_ip = make_label(s_ui.pve_vm_list, "IP", 174, 6, 98,
                                    &app_font_14, COLOR_MUTED);
-    s_ui.vm_header_cpu = make_label(s_ui.pve_vm_list, "CPU", 288, 6, 32,
+    s_ui.vm_header_cpu = make_label(s_ui.pve_vm_list, "vcpu", 288, 6, 40,
                                     &app_font_14, COLOR_MUTED);
     s_ui.vm_header_memory = make_label(s_ui.pve_vm_list, "内存", 336, 6, 76,
                                        &app_font_14, COLOR_MUTED);
@@ -1768,9 +1768,11 @@ static void update_pve(void)
         lv_label_set_text_fmt(s_ui.vm_row_labels[i], "%" PRIu32 " %s", guest->vmid, guest->name);
         lv_label_set_text(s_ui.vm_row_ips[i], guest->ipv4_address[0] != '\0' ?
                           guest->ipv4_address : "--");
-        char cpu[16], capacity[52];
-        format_percent(cpu, sizeof(cpu), guest->cpu_percent);
-        lv_label_set_text(s_ui.vm_row_cpu[i], cpu);
+        char capacity[52];
+        if (guest->cpu_cores > 0)
+            lv_label_set_text_fmt(s_ui.vm_row_cpu[i], "%" PRIu32, guest->cpu_cores);
+        else
+            lv_label_set_text(s_ui.vm_row_cpu[i], "--");
         if (guest->memory_total == 0) {
             lv_label_set_text(s_ui.vm_row_memory[i], "--");
         } else {
