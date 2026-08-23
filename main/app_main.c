@@ -22,24 +22,57 @@
 static const char *TAG = "wt32_dashboard";
 static lv_disp_drv_t s_display_driver;
 static lv_disp_draw_buf_t s_display_buffer;
+static portMUX_TYPE s_flush_lock = portMUX_INITIALIZER_UNLOCKED;
+static TaskHandle_t s_first_frame_waiter;
+static uint32_t s_flush_pending;
+static bool s_first_frame_last_queued;
+static bool s_first_frame_failed;
 static bool color_transfer_done(esp_lcd_panel_io_handle_t panel_io,
                                 esp_lcd_panel_io_event_data_t *event_data,
                                 void *user_context)
 {
     (void)panel_io;
     (void)event_data;
+    TaskHandle_t waiter = NULL;
+    BaseType_t higher_priority_woken = pdFALSE;
+    portENTER_CRITICAL_ISR(&s_flush_lock);
+    if (s_flush_pending > 0) s_flush_pending--;
+    if (s_first_frame_last_queued && s_flush_pending == 0) {
+        waiter = s_first_frame_waiter;
+        s_first_frame_waiter = NULL;
+        s_first_frame_last_queued = false;
+    }
+    portEXIT_CRITICAL_ISR(&s_flush_lock);
     lv_disp_flush_ready((lv_disp_drv_t *)user_context);
-    return false;
+    if (waiter != NULL) {
+        vTaskNotifyGiveFromISR(waiter, &higher_priority_woken);
+    }
+    return higher_priority_woken == pdTRUE;
 }
 
 static void display_flush(lv_disp_drv_t *driver, const lv_area_t *area,
                           lv_color_t *pixels)
 {
+    portENTER_CRITICAL(&s_flush_lock);
+    s_flush_pending++;
+    if (lv_disp_flush_is_last(driver)) s_first_frame_last_queued = true;
+    portEXIT_CRITICAL(&s_flush_lock);
     esp_err_t err = wt32_board_draw_bitmap(area->x1, area->y1,
                                             area->x2 + 1, area->y2 + 1, pixels);
     if (err != ESP_OK) {
+        TaskHandle_t waiter = NULL;
+        portENTER_CRITICAL(&s_flush_lock);
+        if (s_first_frame_waiter != NULL) s_first_frame_failed = true;
+        if (s_flush_pending > 0) s_flush_pending--;
+        if (s_first_frame_last_queued && s_flush_pending == 0) {
+            waiter = s_first_frame_waiter;
+            s_first_frame_waiter = NULL;
+            s_first_frame_last_queued = false;
+        }
+        portEXIT_CRITICAL(&s_flush_lock);
         ESP_LOGE(TAG, "LCD flush failed: %s", esp_err_to_name(err));
         lv_disp_flush_ready(driver);
+        if (waiter != NULL) xTaskNotifyGive(waiter);
     }
 }
 
@@ -152,6 +185,25 @@ static void ui_task(void *argument)
     QueueHandle_t snapshot_queue = argument;
     ESP_ERROR_CHECK(init_lvgl());
     ESP_ERROR_CHECK(dashboard_ui_create());
+    portENTER_CRITICAL(&s_flush_lock);
+    s_first_frame_waiter = xTaskGetCurrentTaskHandle();
+    s_flush_pending = 0;
+    s_first_frame_last_queued = false;
+    s_first_frame_failed = false;
+    portEXIT_CRITICAL(&s_flush_lock);
+    lv_timer_handler();
+    const bool notified = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000)) > 0;
+    portENTER_CRITICAL(&s_flush_lock);
+    const bool first_frame_failed = s_first_frame_failed;
+    s_first_frame_waiter = NULL;
+    portEXIT_CRITICAL(&s_flush_lock);
+    if (notified && !first_frame_failed) {
+        wt32_board_set_backlight_enabled(true);
+    } else if (first_frame_failed) {
+        ESP_LOGE(TAG, "First LCD frame failed; keeping backlight off");
+    } else {
+        ESP_LOGE(TAG, "First LCD frame did not finish; keeping backlight off");
+    }
 
     app_model_event_t event;
     uint32_t update_count = 0;

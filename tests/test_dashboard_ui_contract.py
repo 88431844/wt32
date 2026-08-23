@@ -37,6 +37,15 @@ class DashboardUiContractTest(unittest.TestCase):
             self.assertIn(marker, UI)
         self.assertNotIn("离线 · 缓存", UI)
 
+    def test_top_wifi_status_updates_independently_of_monitor_snapshots(self):
+        clock = UI[
+            UI.index("static void clock_timer_event"):
+            UI.index("static void create_settings_page")
+        ]
+        self.assertIn("network_manager_is_connected()", clock)
+        self.assertIn("network_manager_get_ip", clock)
+        self.assertIn("s_ui.ip_label", clock)
+
     def test_refresh_failure_toast_is_centered_transient_and_noninteractive(self):
         for marker in ("show_refresh_toast", "lv_obj_center(s_ui.toast)",
                        "lv_obj_clear_flag(s_ui.toast, LV_OBJ_FLAG_CLICKABLE)",

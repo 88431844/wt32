@@ -66,11 +66,19 @@ class BoardOrientationContractTest(unittest.TestCase):
 
     def test_startup_applies_persisted_rotation_and_brightness(self) -> None:
         main = MAIN_SOURCE.read_text(encoding="utf-8")
+        header = BOARD_HEADER.read_text(encoding="utf-8")
         self.assertIn("DEVICE_KEY_ROTATE_180", main)
         self.assertIn("DEVICE_KEY_BRIGHTNESS", main)
         self.assertIn("if (brightness < 10 || brightness > 100)", main)
         self.assertIn("wt32_board_set_rotation_180(rotate_180 != 0)", main)
+        self.assertIn("wt32_board_set_backlight_enabled", header)
+        board_init = self.source[
+            self.source.index("esp_err_t wt32_board_init(void)"):
+            self.source.index("esp_err_t wt32_board_draw_bitmap")
+        ]
+        self.assertNotIn("wt32_board_set_brightness", board_init)
         self.assertIn("wt32_board_set_brightness(brightness)", main)
+        self.assertIn("wt32_board_set_backlight_enabled(true)", main)
 
 
 if __name__ == "__main__":

@@ -1539,6 +1539,11 @@ static void clock_timer_event(lv_timer_t *timer)
     struct tm local_now = {0};
     localtime_r(&now, &local_now);
     lv_label_set_text_fmt(s_ui.time_label, "%02d:%02d", local_now.tm_hour, local_now.tm_min);
+    char ip_address[16] = {0};
+    network_manager_get_ip(ip_address, sizeof(ip_address));
+    lv_label_set_text(s_ui.ip_label,
+                      network_manager_is_connected() && ip_address[0] != '\0' ?
+                      ip_address : "WiFi未连接，请到设置里面设置");
 }
 
 static void create_settings_page(lv_obj_t *page)

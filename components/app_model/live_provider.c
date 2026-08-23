@@ -1214,6 +1214,15 @@ static void live_provider_task(void *argument)
             pve_has_snapshot : cycle_monitor == APP_MONITOR_NAS ? nas_has_snapshot : true;
         if (!cycle_has_snapshot)
             publish_status(APP_MODEL_EVENT_LOADING, cycle_monitor, NULL);
+        if (!network_manager_is_connected()) {
+            memset(token_id, 0, sizeof(token_id));
+            memset(token_secret, 0, sizeof(token_secret));
+            memset(pve_ca, 0, sizeof(pve_ca));
+            memset(community, 0, sizeof(community));
+            (void)network_manager_wait_for_connection_or_settings_change(
+                pdMS_TO_TICKS(INITIAL_REQUEST_TIMEOUT_MS));
+            continue;
+        }
         app_snapshot_t *candidate = app_snapshot_create();
         const bool cloned = candidate != NULL && app_snapshot_clone(candidate, &snapshot);
         if (!cloned) {

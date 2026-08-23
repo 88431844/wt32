@@ -40,6 +40,7 @@ static const char *TAG = "board_wt32";
 static esp_lcd_panel_io_handle_t s_panel_io;
 static esp_lcd_panel_handle_t s_panel;
 static uint8_t s_brightness = 72;
+static bool s_backlight_enabled;
 static bool s_touch_ready;
 static bool s_rotation_180 = true;
 
@@ -148,7 +149,6 @@ esp_err_t wt32_board_init(void)
     if (touch_err != ESP_OK) {
         ESP_LOGW(TAG, "Touch disabled: %s", esp_err_to_name(touch_err));
     }
-    wt32_board_set_brightness(s_brightness);
     ESP_LOGI(TAG, "WT32-SC01 board ready: ST7796, FT5x06 touch %s, 480x320",
              s_touch_ready ? "ready" : "unavailable");
     return ESP_OK;
@@ -219,7 +219,7 @@ void wt32_board_set_brightness(uint8_t percent)
         percent = 100;
     }
     s_brightness = percent;
-    uint32_t duty = (BACKLIGHT_MAX_DUTY * percent) / 100;
+    uint32_t duty = s_backlight_enabled ? (BACKLIGHT_MAX_DUTY * percent) / 100 : 0;
     ledc_set_duty(BACKLIGHT_SPEED_MODE, BACKLIGHT_CHANNEL, duty);
     ledc_update_duty(BACKLIGHT_SPEED_MODE, BACKLIGHT_CHANNEL);
 }
@@ -227,6 +227,14 @@ void wt32_board_set_brightness(uint8_t percent)
 uint8_t wt32_board_get_brightness(void)
 {
     return s_brightness;
+}
+
+void wt32_board_set_backlight_enabled(bool enabled)
+{
+    s_backlight_enabled = enabled;
+    uint32_t duty = enabled ? (BACKLIGHT_MAX_DUTY * s_brightness) / 100 : 0;
+    ledc_set_duty(BACKLIGHT_SPEED_MODE, BACKLIGHT_CHANNEL, duty);
+    ledc_update_duty(BACKLIGHT_SPEED_MODE, BACKLIGHT_CHANNEL);
 }
 
 esp_err_t wt32_board_set_rotation_180(bool enabled)

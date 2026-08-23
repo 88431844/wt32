@@ -39,6 +39,7 @@ void network_manager_stop_pve_portal(void);
 void network_manager_get_portal_status(network_portal_status_t *status);
 void network_manager_notify_settings_changed(void);
 bool network_manager_wait_for_settings_change(TickType_t timeout);
+bool network_manager_wait_for_connection_or_settings_change(TickType_t timeout);
 
 #ifdef __cplusplus
 }

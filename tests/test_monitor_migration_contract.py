@@ -6,6 +6,8 @@ MODEL = (ROOT / "components/app_model/include/app_snapshot.h").read_text(encodin
 PROVIDER = (ROOT / "components/app_model/live_provider.c").read_text(encoding="utf-8")
 MAIN = (ROOT / "main/app_main.c").read_text(encoding="utf-8")
 UI = (ROOT / "components/dashboard_ui/dashboard_ui.c").read_text(encoding="utf-8")
+NETWORK = (ROOT / "components/network_manager/network_manager.c").read_text(encoding="utf-8")
+NETWORK_HEADER = (ROOT / "components/network_manager/include/network_manager.h").read_text(encoding="utf-8")
 SETTINGS_HEADER = (ROOT / "components/network_manager/include/device_settings.h").read_text(encoding="utf-8")
 
 class MonitorMigrationContractTest(unittest.TestCase):
@@ -121,6 +123,39 @@ class MonitorMigrationContractTest(unittest.TestCase):
             self.assertIn(marker, PROVIDER)
         self.assertIn("snapshot->pve_last_success_ms > 0", UI)
         self.assertIn("snapshot->nas_last_success_ms > 0", UI)
+
+    def test_provider_waits_for_wifi_before_startup_collection(self):
+        self.assertIn("if (!network_manager_is_connected())", PROVIDER)
+        guard_start = PROVIDER.index("const bool cycle_has_snapshot")
+        candidate_start = PROVIDER.index("app_snapshot_t *candidate", guard_start)
+        guard = PROVIDER[guard_start:candidate_start]
+        self.assertIn("network_manager_wait_for_connection_or_settings_change", guard)
+        self.assertIn("APP_MODEL_EVENT_LOADING", guard)
+        self.assertNotIn("publish_collection_failure", guard)
+        self.assertLess(guard.index("APP_MODEL_EVENT_LOADING"),
+                        guard.index("if (!network_manager_is_connected())"))
+        self.assertIn("network_manager_wait_for_connection_or_settings_change", NETWORK_HEADER)
+        self.assertIn("WIFI_CONNECTED_BIT | SETTINGS_CHANGED_BIT", NETWORK)
+
+    def test_backlight_waits_for_first_render_after_reset(self):
+        ui_start = MAIN[MAIN.index("static void ui_task"):MAIN.index("void app_main(void)")]
+        for marker in ("lv_disp_flush_is_last", "s_flush_pending",
+                       "s_first_frame_waiter", "ulTaskNotifyTake"):
+            self.assertIn(marker, MAIN)
+        self.assertIn("wt32_board_set_backlight_enabled(true)", ui_start)
+        self.assertLess(ui_start.index("lv_timer_handler()"),
+                        ui_start.index("ulTaskNotifyTake"))
+        self.assertLess(ui_start.index("ulTaskNotifyTake"),
+                        ui_start.index("wt32_board_set_backlight_enabled(true)"))
+        self.assertNotIn("vTaskDelay(pdMS_TO_TICKS(30))", ui_start)
+
+    def test_failed_first_frame_keeps_backlight_off(self):
+        flush = MAIN[MAIN.index("static void display_flush"):
+                     MAIN.index("static void touch_read")]
+        ui_start = MAIN[MAIN.index("static void ui_task"):MAIN.index("void app_main(void)")]
+        self.assertIn("s_first_frame_failed", MAIN)
+        self.assertIn("s_first_frame_failed = true", flush)
+        self.assertIn("notified && !first_frame_failed", ui_start)
 
     def test_homepage_key_is_valid_short_nvs_key(self):
         self.assertIn('#define DEVICE_KEY_HOME_PAGE "home_page"', SETTINGS_HEADER)

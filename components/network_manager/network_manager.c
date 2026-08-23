@@ -310,3 +310,18 @@ bool network_manager_wait_for_settings_change(TickType_t timeout)
                                            pdFALSE, timeout);
     return (bits & SETTINGS_CHANGED_BIT) != 0;
 }
+
+bool network_manager_wait_for_connection_or_settings_change(TickType_t timeout)
+{
+    if (s_events == NULL) {
+        vTaskDelay(timeout);
+        return false;
+    }
+    const EventBits_t requested = WIFI_CONNECTED_BIT | SETTINGS_CHANGED_BIT;
+    EventBits_t bits = xEventGroupWaitBits(s_events, requested, pdFALSE,
+                                           pdFALSE, timeout);
+    if ((bits & SETTINGS_CHANGED_BIT) != 0) {
+        xEventGroupClearBits(s_events, SETTINGS_CHANGED_BIT);
+    }
+    return (bits & requested) != 0;
+}
