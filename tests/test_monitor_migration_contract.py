@@ -47,6 +47,20 @@ class MonitorMigrationContractTest(unittest.TestCase):
         self.assertIn("MBEDTLS_ERR_SSL_WANT_READ", PROVIDER)
         self.assertIn("read_deadline_us", PROVIDER)
 
+    def test_pve_guests_are_sorted_before_network_collection(self):
+        collection_start = PROVIDER.index('"/api2/json/cluster/resources?type=vm"')
+        collection_end = PROVIDER.index("snapshot->pve_online = true;", collection_start)
+        collection = PROVIDER[collection_start:collection_end]
+        self.assertIn('#include "pve_guest_sort.h"', PROVIDER)
+        self.assertIn(
+            "pve_guest_sort(snapshot->pve_guests, snapshot->pve_guest_count);",
+            collection,
+        )
+        self.assertLess(
+            collection.index("pve_guest_sort("),
+            collection.index("for (size_t i = 0; i < snapshot->pve_guest_count; ++i)"),
+        )
+
     def test_pve_node_status_collects_uptime_and_cpu_model(self):
         for declaration in (
             "uint32_t pve_uptime_seconds;",

@@ -22,6 +22,7 @@
 #include "mbedtls/sha256.h"
 #include "mbedtls/x509_crt.h"
 #include "network_manager.h"
+#include "pve_guest_sort.h"
 
 #define DEFAULT_REFRESH_SECONDS 5
 #define HTTP_TIMEOUT_MS 5000
@@ -463,6 +464,7 @@ static bool collect_pve(const char *host, const char *node, const char *token_id
         return false;
     }
     cJSON_Delete(root);
+    pve_guest_sort(snapshot->pve_guests, snapshot->pve_guest_count);
     for (size_t i = 0; i < snapshot->pve_guest_count; ++i) {
         pve_guest_t *guest = &snapshot->pve_guests[i];
         if (!guest->running) continue;
