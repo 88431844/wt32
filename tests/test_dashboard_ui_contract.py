@@ -116,6 +116,16 @@ class DashboardUiContractTest(unittest.TestCase):
                        "snapshot->nas_pool_count > NAS_VISIBLE"):
             self.assertIn(marker, UI)
 
+    def test_nas_pool_labels_use_synology_volume_numbers(self):
+        update_nas = UI[
+            UI.index("static void update_nas(void)\n{"):
+            UI.index("static void", UI.index("static void update_nas(void)\n{") + 20)
+        ]
+        self.assertIn('#include "nas_pool_order.h"', UI)
+        self.assertIn("nas_pool_number(pool->name, &pool_number)", update_nas)
+        self.assertIn('"存储池%zu", pool_number', update_nas)
+        self.assertNotIn('"存储池%zu", index + 1', update_nas)
+
     def test_brand_icons_keep_official_colors(self):
         icons = ICONS_SOURCE.read_text(encoding="utf-8")
         self.assertIn("COLOR_ICON_DESCRIPTOR(dashboard_icon_dsm", icons)

@@ -99,6 +99,20 @@ class MonitorMigrationContractTest(unittest.TestCase):
                        "snmp_oid_compare(value.oid, cursor) <= 0"):
             self.assertIn(marker, PROVIDER)
 
+    def test_synology_pools_are_sorted_by_volume_number_after_collection(self):
+        collection_start = PROVIDER.index("static const char *raid_name_oid")
+        collection_end = PROVIDER.index("if (!collect_nas_disks", collection_start)
+        collection = PROVIDER[collection_start:collection_end]
+        self.assertIn('#include "nas_pool_order.h"', PROVIDER)
+        self.assertIn(
+            "nas_pool_sort(snapshot->nas_pools, snapshot->nas_pool_count);",
+            collection,
+        )
+        self.assertGreater(
+            collection.index("nas_pool_sort("),
+            collection.index("snapshot->nas_pool_count++;"),
+        )
+
     def test_provider_keeps_per_exchange_timeout_and_strict_tls(self):
         self.assertIn("SNMP_TIMEOUT_MS", PROVIDER)
         self.assertIn(".skip_common_name = false", PROVIDER)

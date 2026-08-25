@@ -14,6 +14,7 @@
 #include "esp_log.h"
 #include "lvgl.h"
 #include "nas_disk_sort.h"
+#include "nas_pool_order.h"
 #include "network_manager.h"
 
 LV_FONT_DECLARE(app_font_14);
@@ -1813,7 +1814,9 @@ static void update_nas(void)
         if (!visible) continue;
         const nas_pool_t *pool = &snapshot->nas_pools[index];
         const bool healthy = nas_live && pool->healthy;
-        lv_label_set_text_fmt(s_ui.nas_row_labels[i], "存储池%zu", index + 1);
+        size_t pool_number = index + 1;
+        (void)nas_pool_number(pool->name, &pool_number);
+        lv_label_set_text_fmt(s_ui.nas_row_labels[i], "存储池%zu", pool_number);
         lv_obj_set_style_bg_color(s_ui.nas_row_status_dots[i],
                                   color(healthy ? COLOR_GREEN : COLOR_RED), 0);
         lv_label_set_text(s_ui.nas_row_descriptions[i], healthy ? "" :

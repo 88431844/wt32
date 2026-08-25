@@ -22,6 +22,7 @@
 #include "mbedtls/sha256.h"
 #include "mbedtls/x509_crt.h"
 #include "network_manager.h"
+#include "nas_pool_order.h"
 #include "pve_guest_sort.h"
 
 #define DEFAULT_REFRESH_SECONDS 5
@@ -1097,6 +1098,7 @@ static bool collect_nas(const char *host, const char *community, app_snapshot_t 
         else snprintf(pool->description, sizeof(pool->description), "状态 %" PRIu64, raid_status);
         snapshot->nas_pool_count++;
     }
+    nas_pool_sort(snapshot->nas_pools, snapshot->nas_pool_count);
     if (!collect_nas_disks(host, community, snapshot)) return false;
     collect_nas_network(host, community, snapshot);
     const bool success = snapshot->nas_uptime_valid || snapshot->nas_cpu_valid ||
