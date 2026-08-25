@@ -9,6 +9,7 @@
 
 #include "board_wt32.h"
 #include "dashboard_icons.h"
+#include "capacity_format.h"
 #include "device_settings.h"
 #include "esp_log.h"
 #include "lvgl.h"
@@ -450,20 +451,6 @@ static void format_bytes(char *out, size_t size, uint64_t bytes)
     else if (bytes >= (1ULL << 30)) snprintf(out, size, "%.1fG", (double)bytes / (1ULL << 30));
     else if (bytes >= (1ULL << 20)) snprintf(out, size, "%.1fM", (double)bytes / (1ULL << 20));
     else snprintf(out, size, "%" PRIu64 "B", bytes);
-}
-
-static void format_capacity(char *out, size_t size, uint64_t bytes)
-{
-    if (bytes >= (100ULL << 40))
-        snprintf(out, size, "%.0fT", (double)bytes / (1ULL << 40));
-    else if (bytes >= (1ULL << 40))
-        snprintf(out, size, "%.1fT", (double)bytes / (1ULL << 40));
-    else if (bytes >= (100ULL << 30))
-        snprintf(out, size, "%.0fG", (double)bytes / (1ULL << 30));
-    else if (bytes >= (1ULL << 30))
-        snprintf(out, size, "%.1fG", (double)bytes / (1ULL << 30));
-    else
-        format_bytes(out, size, bytes);
 }
 
 static void format_uptime(char *out, size_t size, uint32_t seconds)
@@ -1835,9 +1822,9 @@ static void update_nas(void)
         lv_obj_set_style_text_color(s_ui.nas_row_descriptions[i],
                                     color(healthy ? COLOR_MUTED : COLOR_RED), 0);
         if (nas_live) {
-            format_capacity(used, sizeof(used), pool->used_bytes);
-            format_capacity(total, sizeof(total), pool->total_bytes);
-            format_capacity(free_space, sizeof(free_space), pool->free_bytes);
+            dashboard_format_capacity(used, sizeof(used), pool->used_bytes);
+            dashboard_format_capacity(total, sizeof(total), pool->total_bytes);
+            dashboard_format_capacity(free_space, sizeof(free_space), pool->free_bytes);
             lv_label_set_text_fmt(s_ui.nas_row_values[i], "%s/%s 剩%s", used, total, free_space);
             lv_bar_set_value(s_ui.nas_row_bars[i], pool->total_bytes == 0 ? 0 :
                              (int)(pool->used_bytes * 100ULL / pool->total_bytes), LV_ANIM_OFF);
