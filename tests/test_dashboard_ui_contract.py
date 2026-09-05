@@ -7,6 +7,9 @@ UI = (ROOT / "components/dashboard_ui/dashboard_ui.c").read_text(encoding="utf-8
 ICONS_HEADER = ROOT / "components/dashboard_ui/include/dashboard_icons.h"
 ICONS_SOURCE = ROOT / "components/dashboard_ui/assets/dashboard_icons.c"
 FONT_14 = ROOT / "components/dashboard_ui/fonts/app_font_14.c"
+SETTINGS_HEADER = (
+    ROOT / "components/network_manager/include/device_settings.h"
+).read_text(encoding="utf-8")
 
 class DashboardUiContractTest(unittest.TestCase):
     def test_14px_font_covers_all_static_chinese_ui_text(self):
@@ -45,6 +48,35 @@ class DashboardUiContractTest(unittest.TestCase):
         self.assertIn("network_manager_is_connected()", clock)
         self.assertIn("network_manager_get_ip", clock)
         self.assertIn("s_ui.ip_label", clock)
+
+    def test_settings_expose_persistent_night_brightness_schedule(self):
+        for key in (
+            "DEVICE_KEY_NIGHT_ENABLED",
+            "DEVICE_KEY_NIGHT_START",
+            "DEVICE_KEY_NIGHT_END",
+            "DEVICE_KEY_NIGHT_BRIGHTNESS",
+        ):
+            self.assertIn(key, SETTINGS_HEADER)
+            self.assertIn(key, UI)
+        for marker in (
+            '"降亮"',
+            '"时间"',
+            "night_toggle_event",
+            "night_hour_event",
+            "night_brightness_event",
+            "night_mode_hour_is_active",
+            "apply_scheduled_brightness",
+        ):
+            self.assertIn(marker, UI)
+
+    def test_night_mode_waits_for_valid_time_and_updates_with_clock(self):
+        clock = UI[
+            UI.index("static void clock_timer_event"):
+            UI.index("static void create_settings_page")
+        ]
+        self.assertIn("local_time_is_valid", clock)
+        self.assertIn("apply_scheduled_brightness", clock)
+        self.assertIn('lv_label_set_text(s_ui.time_label, "--:--")', clock)
 
     def test_refresh_failure_toast_is_centered_transient_and_noninteractive(self):
         for marker in ("show_refresh_toast", "lv_obj_center(s_ui.toast)",

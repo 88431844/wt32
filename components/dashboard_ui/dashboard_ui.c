@@ -16,6 +16,7 @@
 #include "nas_disk_sort.h"
 #include "nas_pool_order.h"
 #include "network_manager.h"
+#include "night_mode.h"
 
 LV_FONT_DECLARE(app_font_14);
 LV_FONT_DECLARE(app_font_18);
@@ -54,6 +55,9 @@ LV_FONT_DECLARE(app_font_18);
 #define TOAST_DURATION_MS 2500
 #define THEME_COUNT 5
 #define REFRESH_OPTION_COUNT 4
+#define NIGHT_DEFAULT_START_HOUR 22
+#define NIGHT_DEFAULT_END_HOUR 7
+#define NIGHT_DEFAULT_BRIGHTNESS 20
 
 typedef enum {
     THEME_DEEP_OCEAN,
@@ -113,6 +117,11 @@ typedef enum {
 static uint8_t s_theme_id = THEME_GRAPHITE;
 static uint8_t s_refresh_seconds = 5;
 static uint8_t s_homepage = 0;
+static uint8_t s_daytime_brightness = 72;
+static bool s_night_mode_enabled = true;
+static uint8_t s_night_start_hour = NIGHT_DEFAULT_START_HOUR;
+static uint8_t s_night_end_hour = NIGHT_DEFAULT_END_HOUR;
+static uint8_t s_night_brightness = NIGHT_DEFAULT_BRIGHTNESS;
 
 static const dashboard_palette_t *palette(void)
 {
@@ -227,6 +236,11 @@ typedef struct {
     lv_obj_t *wifi_status;
     lv_obj_t *brightness_value;
     lv_obj_t *brightness_slider;
+    lv_obj_t *night_toggle_button;
+    lv_obj_t *night_start_button;
+    lv_obj_t *night_end_button;
+    lv_obj_t *night_brightness_value;
+    lv_obj_t *night_brightness_slider;
     lv_obj_t *rotation_0_button;
     lv_obj_t *rotation_180_button;
     lv_obj_t *theme_name;
@@ -264,6 +278,8 @@ static void show_pve_node(void);
 static void show_pve_vm_list(void);
 static void vm_name_event(lv_event_t *event);
 static void set_rotation_button_state(void);
+static void set_night_mode_control_state(void);
+static void apply_scheduled_brightness(const struct tm *local_now);
 static void set_refresh_button_state(void);
 static void set_homepage_button_state(void);
 static void nas_disk_sort_event(lv_event_t *event);
@@ -574,6 +590,7 @@ static void apply_theme(void)
     }
     set_nav_button_state();
     set_rotation_button_state();
+    set_night_mode_control_state();
     set_refresh_button_state();
     set_homepage_button_state();
     if (s_ui.theme_name != NULL) lv_label_set_text(s_ui.theme_name, palette()->name);
@@ -1254,6 +1271,87 @@ static void set_rotation_button_state(void)
     set_button_selected(s_ui.rotation_180_button, rotated);
 }
 
+static bool local_time_is_valid(const struct tm *local_now)
+{
+    return local_now != NULL && local_now->tm_year >= 120 &&
+           local_now->tm_hour >= 0 && local_now->tm_hour < 24;
+}
+
+static void set_hour_button_text(lv_obj_t *button, uint8_t hour)
+{
+    if (button == NULL) return;
+    lv_obj_t *label = lv_obj_get_child(button, 0);
+    if (label != NULL) lv_label_set_text_fmt(label, "%02u:00 >", hour);
+}
+
+static void update_night_brightness_control(void)
+{
+    s_night_brightness = night_mode_limit_brightness(s_daytime_brightness,
+                                                      s_night_brightness);
+    if (s_ui.night_brightness_slider != NULL) {
+        lv_slider_set_range(s_ui.night_brightness_slider, NIGHT_MODE_MIN_BRIGHTNESS,
+                            night_mode_max_brightness(s_daytime_brightness));
+        lv_slider_set_value(s_ui.night_brightness_slider, s_night_brightness,
+                            LV_ANIM_OFF);
+    }
+    if (s_ui.night_brightness_value != NULL) {
+        lv_label_set_text_fmt(s_ui.night_brightness_value, "%u%%", s_night_brightness);
+    }
+}
+
+static void set_night_mode_control_state(void)
+{
+    set_button_selected(s_ui.night_toggle_button, s_night_mode_enabled);
+    if (s_ui.night_toggle_button != NULL) {
+        lv_obj_t *label = lv_obj_get_child(s_ui.night_toggle_button, 0);
+        if (label != NULL) lv_label_set_text(label, s_night_mode_enabled ? "开" : "关");
+    }
+    set_hour_button_text(s_ui.night_start_button, s_night_start_hour);
+    set_hour_button_text(s_ui.night_end_button, s_night_end_hour);
+    update_night_brightness_control();
+}
+
+static void apply_scheduled_brightness(const struct tm *local_now)
+{
+    const bool night_is_active =
+        s_night_mode_enabled && local_time_is_valid(local_now) &&
+        night_mode_hour_is_active(s_night_start_hour, s_night_end_hour,
+                                  (uint8_t)local_now->tm_hour);
+    const uint8_t target = night_is_active ? s_night_brightness : s_daytime_brightness;
+    if (wt32_board_get_brightness() != target) wt32_board_set_brightness(target);
+}
+
+static void apply_scheduled_brightness_now(void)
+{
+    time_t now = time(NULL);
+    struct tm local_now = {0};
+    localtime_r(&now, &local_now);
+    apply_scheduled_brightness(local_time_is_valid(&local_now) ? &local_now : NULL);
+}
+
+static void load_night_mode_settings(void)
+{
+    uint8_t saved = 0;
+    s_daytime_brightness = wt32_board_get_brightness();
+    s_night_mode_enabled = true;
+    s_night_start_hour = NIGHT_DEFAULT_START_HOUR;
+    s_night_end_hour = NIGHT_DEFAULT_END_HOUR;
+    s_night_brightness = NIGHT_DEFAULT_BRIGHTNESS;
+
+    if (device_settings_get_u8(DEVICE_KEY_NIGHT_ENABLED, &saved) == ESP_OK && saved <= 1)
+        s_night_mode_enabled = saved != 0;
+    if (device_settings_get_u8(DEVICE_KEY_NIGHT_START, &saved) == ESP_OK && saved < 24)
+        s_night_start_hour = saved;
+    if (device_settings_get_u8(DEVICE_KEY_NIGHT_END, &saved) == ESP_OK && saved < 24)
+        s_night_end_hour = saved;
+    if (device_settings_get_u8(DEVICE_KEY_NIGHT_BRIGHTNESS, &saved) == ESP_OK &&
+        saved >= NIGHT_MODE_MIN_BRIGHTNESS && saved <= NIGHT_MODE_MAX_BRIGHTNESS) {
+        s_night_brightness = saved;
+    }
+    s_night_brightness = night_mode_limit_brightness(s_daytime_brightness,
+                                                      s_night_brightness);
+}
+
 static void rotation_event(lv_event_t *event)
 {
     if (lv_event_get_code(event) != LV_EVENT_CLICKED) return;
@@ -1270,10 +1368,52 @@ static void brightness_event(lv_event_t *event)
     const lv_event_code_t code = lv_event_get_code(event);
     const uint8_t value = (uint8_t)lv_slider_get_value(s_ui.brightness_slider);
     if (code == LV_EVENT_VALUE_CHANGED) {
-        wt32_board_set_brightness(value);
+        s_daytime_brightness = value;
+        update_night_brightness_control();
+        apply_scheduled_brightness_now();
         lv_label_set_text_fmt(s_ui.brightness_value, "%u%%", value);
     } else if (code == LV_EVENT_RELEASED) {
         device_settings_set_u8(DEVICE_KEY_BRIGHTNESS, value);
+        device_settings_set_u8(DEVICE_KEY_NIGHT_BRIGHTNESS, s_night_brightness);
+    }
+}
+
+static void night_toggle_event(lv_event_t *event)
+{
+    if (lv_event_get_code(event) != LV_EVENT_CLICKED) return;
+    const bool enabled = !s_night_mode_enabled;
+    if (device_settings_set_u8(DEVICE_KEY_NIGHT_ENABLED, enabled ? 1 : 0) != ESP_OK)
+        return;
+    s_night_mode_enabled = enabled;
+    set_night_mode_control_state();
+    apply_scheduled_brightness_now();
+}
+
+static void night_hour_event(lv_event_t *event)
+{
+    const lv_event_code_t code = lv_event_get_code(event);
+    if (code != LV_EVENT_CLICKED && code != LV_EVENT_LONG_PRESSED_REPEAT) return;
+    const bool edits_end = (bool)(uintptr_t)lv_event_get_user_data(event);
+    uint8_t *hour = edits_end ? &s_night_end_hour : &s_night_start_hour;
+    const char *key = edits_end ? DEVICE_KEY_NIGHT_END : DEVICE_KEY_NIGHT_START;
+    const uint8_t next_hour = (uint8_t)((*hour + 1) % 24);
+    if (device_settings_set_u8(key, next_hour) != ESP_OK) return;
+    *hour = next_hour;
+    set_hour_button_text(edits_end ? s_ui.night_end_button : s_ui.night_start_button,
+                         next_hour);
+    apply_scheduled_brightness_now();
+}
+
+static void night_brightness_event(lv_event_t *event)
+{
+    const lv_event_code_t code = lv_event_get_code(event);
+    const uint8_t value = (uint8_t)lv_slider_get_value(s_ui.night_brightness_slider);
+    if (code == LV_EVENT_VALUE_CHANGED) {
+        s_night_brightness = value;
+        lv_label_set_text_fmt(s_ui.night_brightness_value, "%u%%", value);
+        apply_scheduled_brightness_now();
+    } else if (code == LV_EVENT_RELEASED) {
+        device_settings_set_u8(DEVICE_KEY_NIGHT_BRIGHTNESS, value);
     }
 }
 
@@ -1526,7 +1666,14 @@ static void clock_timer_event(lv_timer_t *timer)
     time_t now = time(NULL);
     struct tm local_now = {0};
     localtime_r(&now, &local_now);
-    lv_label_set_text_fmt(s_ui.time_label, "%02d:%02d", local_now.tm_hour, local_now.tm_min);
+    const bool time_valid = local_time_is_valid(&local_now);
+    if (time_valid) {
+        lv_label_set_text_fmt(s_ui.time_label, "%02d:%02d",
+                              local_now.tm_hour, local_now.tm_min);
+    } else {
+        lv_label_set_text(s_ui.time_label, "--:--");
+    }
+    apply_scheduled_brightness(time_valid ? &local_now : NULL);
     char ip_address[16] = {0};
     network_manager_get_ip(ip_address, sizeof(ip_address));
     lv_label_set_text(s_ui.ip_label,
@@ -1547,7 +1694,7 @@ static void create_settings_page(lv_obj_t *page)
     s_ui.wifi_status = make_label(wifi, "WiFi未连接，请到设置里面设置",
                                   10, 43, 442, &app_font_14, COLOR_MUTED);
 
-    lv_obj_t *display = make_surface(page, 8, 78, 464, 94);
+    lv_obj_t *display = make_surface(page, 8, 78, 464, 132);
     make_label(display, "屏幕", 10, 8, 50, &app_font_18, COLOR_TEXT);
     make_label(display, "旋转", 66, 10, 42, &app_font_14, COLOR_MUTED);
     s_ui.rotation_0_button = make_button(display, "0°", 110, 6, 50, 30,
@@ -1559,11 +1706,11 @@ static void create_settings_page(lv_obj_t *page)
     lv_obj_set_pos(s_ui.brightness_slider, 278, 15);
     lv_obj_set_size(s_ui.brightness_slider, 118, 10);
     lv_slider_set_range(s_ui.brightness_slider, 10, 100);
-    lv_slider_set_value(s_ui.brightness_slider, wt32_board_get_brightness(), LV_ANIM_OFF);
+    lv_slider_set_value(s_ui.brightness_slider, s_daytime_brightness, LV_ANIM_OFF);
     lv_obj_add_event_cb(s_ui.brightness_slider, brightness_event, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_add_event_cb(s_ui.brightness_slider, brightness_event, LV_EVENT_RELEASED, NULL);
     s_ui.brightness_value = make_label(display, "", 404, 9, 48, &app_font_14, COLOR_TEXT);
-    lv_label_set_text_fmt(s_ui.brightness_value, "%u%%", wt32_board_get_brightness());
+    lv_label_set_text_fmt(s_ui.brightness_value, "%u%%", s_daytime_brightness);
     make_label(display, "主题", 10, 57, 42, &app_font_14, COLOR_MUTED);
     make_button(display, "<", 58, 46, 42, 36, theme_event, (void *)(intptr_t)-1);
     s_ui.theme_name = make_label(display, palette()->name, 108, 56, 116, &app_font_14, COLOR_TEXT);
@@ -1572,26 +1719,60 @@ static void create_settings_page(lv_obj_t *page)
     make_label(display, "默认 石墨青", 292, 56, 150, &app_font_14, COLOR_MUTED);
     set_rotation_button_state();
 
-    lv_obj_t *monitor = make_surface(page, 8, 176, 464, 108);
+    lv_obj_t *night = lv_obj_create(display);
+    lv_obj_remove_style_all(night);
+    lv_obj_add_style(night, &s_button_style, 0);
+    lv_obj_set_pos(night, 6, 86);
+    lv_obj_set_size(night, 452, 40);
+    lv_obj_clear_flag(night, LV_OBJ_FLAG_SCROLLABLE);
+    make_label(night, "降亮", 6, 12, 34, &app_font_14, COLOR_MUTED);
+    s_ui.night_toggle_button = make_button(night, "开", 42, 5, 40, 30,
+                                           night_toggle_event, NULL);
+    lv_obj_add_style(s_ui.night_toggle_button, &s_muted_button_style, 0);
+    make_label(night, "时间", 90, 12, 34, &app_font_14, COLOR_MUTED);
+    s_ui.night_start_button = make_button(night, "", 126, 5, 76, 30,
+                                          night_hour_event, (void *)(uintptr_t)false);
+    lv_obj_add_style(s_ui.night_start_button, &s_muted_button_style, 0);
+    lv_obj_add_event_cb(s_ui.night_start_button, night_hour_event,
+                        LV_EVENT_LONG_PRESSED_REPEAT, (void *)(uintptr_t)false);
+    make_label(night, "-", 207, 12, 9, &app_font_14, COLOR_MUTED);
+    s_ui.night_end_button = make_button(night, "", 220, 5, 76, 30,
+                                        night_hour_event, (void *)(uintptr_t)true);
+    lv_obj_add_style(s_ui.night_end_button, &s_muted_button_style, 0);
+    lv_obj_add_event_cb(s_ui.night_end_button, night_hour_event,
+                        LV_EVENT_LONG_PRESSED_REPEAT, (void *)(uintptr_t)true);
+    make_label(night, "亮度", 304, 12, 34, &app_font_14, COLOR_MUTED);
+    s_ui.night_brightness_slider = lv_slider_create(night);
+    lv_obj_set_pos(s_ui.night_brightness_slider, 344, 15);
+    lv_obj_set_size(s_ui.night_brightness_slider, 58, 10);
+    lv_obj_add_event_cb(s_ui.night_brightness_slider, night_brightness_event,
+                        LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(s_ui.night_brightness_slider, night_brightness_event,
+                        LV_EVENT_RELEASED, NULL);
+    s_ui.night_brightness_value = make_label(night, "", 408, 10, 40,
+                                             &app_font_14, COLOR_TEXT);
+    set_night_mode_control_state();
+
+    lv_obj_t *monitor = make_surface(page, 8, 214, 464, 70);
     make_label(monitor, "主页", 10, 8, 42, &app_font_14, COLOR_MUTED);
     s_ui.homepage_buttons[0] = make_icon_button(
-        monitor, "NAS", &dashboard_icon_dsm, 58, 3, 82, 30,
+        monitor, "NAS", &dashboard_icon_dsm, 58, 3, 74, 30,
         homepage_event, (void *)(uintptr_t)0);
     s_ui.homepage_buttons[1] = make_icon_button(
-        monitor, "PVE", &dashboard_icon_proxmox, 146, 3, 82, 30,
+        monitor, "PVE", &dashboard_icon_proxmox, 138, 3, 74, 30,
         homepage_event, (void *)(uintptr_t)1);
     set_homepage_button_state();
-    make_label(monitor, "刷新", 10, 43, 42, &app_font_14, COLOR_MUTED);
+    make_label(monitor, "刷新", 222, 8, 42, &app_font_14, COLOR_MUTED);
     static const char *const labels[REFRESH_OPTION_COUNT] = {"5 秒", "10 秒", "30 秒", "60 秒"};
     static const uint8_t intervals[REFRESH_OPTION_COUNT] = {5, 10, 30, 60};
     for (size_t i = 0; i < REFRESH_OPTION_COUNT; ++i) {
-        s_ui.refresh_buttons[i] = make_button(monitor, labels[i], 58 + (int)i * 72, 37, 66, 30,
+        s_ui.refresh_buttons[i] = make_button(monitor, labels[i], 264 + (int)i * 46, 3, 42, 30,
                                               refresh_event, (void *)(uintptr_t)intervals[i]);
     }
     set_refresh_button_state();
-    make_label(monitor, "监控配置", 10, 82, 82, &app_font_14, COLOR_MUTED);
-    make_label(monitor, "PVE / 群晖只读访问", 96, 82, 196, &app_font_14, COLOR_TEXT);
-    make_button(monitor, "PVE Token 设置", 314, 72, 136, 30,
+    make_label(monitor, "监控配置", 10, 47, 82, &app_font_14, COLOR_MUTED);
+    make_label(monitor, "PVE / 群晖只读访问", 96, 47, 196, &app_font_14, COLOR_TEXT);
+    make_button(monitor, "PVE Token 设置", 314, 37, 136, 30,
                 token_portal_event, NULL);
     s_ui.settings_timer = lv_timer_create(settings_timer_event, 500, NULL);
 }
@@ -1635,6 +1816,7 @@ esp_err_t dashboard_ui_create(void)
     if (device_settings_get_u8(DEVICE_KEY_HOME_PAGE, &saved_homepage) != ESP_OK ||
         saved_homepage > 1) saved_homepage = 0;
     s_homepage = saved_homepage;
+    load_night_mode_settings();
     memset(&s_ui, 0, sizeof(s_ui));
     s_ui.active_page = saved_homepage == 0 ? 0 : 1;
     s_ui.selected_vm_index = -1;

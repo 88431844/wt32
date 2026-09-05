@@ -197,6 +197,12 @@ screen_x = 479 - raw_y
 screen_y = raw_x
 ```
 
+The Settings page stores the normal screen brightness and an optional scheduled
+dim period in NVS. The dim period defaults to `22:00-07:00` at `20%` brightness,
+supports schedules that cross midnight, and waits for valid SNTP time before it
+changes the backlight. Tap either time button to advance one hour, or hold it to
+advance repeatedly.
+
 ## Directory Layout
 
 ```text
