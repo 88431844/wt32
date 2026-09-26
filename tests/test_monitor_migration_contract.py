@@ -7,10 +7,19 @@ PROVIDER = (ROOT / "components/app_model/live_provider.c").read_text(encoding="u
 MAIN = (ROOT / "main/app_main.c").read_text(encoding="utf-8")
 UI = (ROOT / "components/dashboard_ui/dashboard_ui.c").read_text(encoding="utf-8")
 NETWORK = (ROOT / "components/network_manager/network_manager.c").read_text(encoding="utf-8")
+PORTAL = (ROOT / "components/network_manager/provisioning_portal.c").read_text(encoding="utf-8")
 NETWORK_HEADER = (ROOT / "components/network_manager/include/network_manager.h").read_text(encoding="utf-8")
 SETTINGS_HEADER = (ROOT / "components/network_manager/include/device_settings.h").read_text(encoding="utf-8")
 
 class MonitorMigrationContractTest(unittest.TestCase):
+    def test_setup_portal_is_open_and_accepts_ap_ipv4_mapped_ipv6_clients(self):
+        self.assertIn("s_status.password[0] = '\\0';", PORTAL)
+        self.assertIn("ap.ap.authmode = WIFI_AUTH_OPEN", PORTAL)
+        self.assertIn("address.ss_family == AF_INET6", PORTAL)
+        self.assertIn("bytes[12] == 192", PORTAL)
+        self.assertIn("WT32-Setup AP first", PORTAL)
+        self.assertNotIn("esp_fill_random", PORTAL)
+
     def test_snapshot_collections_are_dynamic_and_uncapped(self):
         for declaration in ("size_t pve_guest_count", "pve_guest_t *pve_guests",
                             "size_t nas_pool_count", "nas_pool_t *nas_pools",

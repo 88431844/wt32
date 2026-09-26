@@ -1594,9 +1594,10 @@ static void token_portal_event(lv_event_t *event)
     s_ui.portal_status_label = make_label(dialog, "", 18, 54, 360, &app_font_14, COLOR_TEXT);
     lv_label_set_long_mode(s_ui.portal_status_label, LV_LABEL_LONG_WRAP);
     lv_obj_set_height(s_ui.portal_status_label, 120);
+    const char *portal_password = status.password[0] != '\0' ? status.password : "[OPEN]";
     lv_label_set_text_fmt(s_ui.portal_status_label,
                           "AP: %s\n密码: %s\n地址: 192.168.4.1\n剩余: %u 秒",
-                          status.ssid, status.password, status.seconds_remaining);
+                          status.ssid, portal_password, status.seconds_remaining);
     make_button(dialog, "关闭 AP", 246, 184, 132, 38, portal_cancel_event, NULL);
     s_ui.portal_overlay = overlay;
 }
@@ -1639,9 +1640,10 @@ static void settings_timer_event(lv_timer_t *timer)
         if (!status.active) {
             close_portal_overlay(false);
         } else if (s_ui.portal_status_label != NULL) {
+            const char *portal_password = status.password[0] != '\0' ? status.password : "[OPEN]";
             lv_label_set_text_fmt(s_ui.portal_status_label,
                                   "AP: %s\n密码: %s\n地址: 192.168.4.1\n剩余: %u 秒",
-                                  status.ssid, status.password, status.seconds_remaining);
+                                  status.ssid, portal_password, status.seconds_remaining);
         }
     }
 }

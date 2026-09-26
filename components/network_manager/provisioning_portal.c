@@ -10,7 +10,6 @@
 #include "device_settings.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
-#include "esp_system.h"
 #include "esp_wifi.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -51,10 +50,21 @@ static bool request_from_ap(httpd_req_t *request)
     struct sockaddr_storage address = {0};
     socklen_t length = sizeof(address);
     int socket_fd = httpd_req_to_sockfd(request);
-    if (getpeername(socket_fd, (struct sockaddr *)&address, &length) != 0 ||
-        address.ss_family != AF_INET) return false;
-    const struct sockaddr_in *ipv4 = (const struct sockaddr_in *)&address;
-    return (ntohl(ipv4->sin_addr.s_addr) >> 8) == 0xC0A804UL;
+    if (getpeername(socket_fd, (struct sockaddr *)&address, &length) != 0) return false;
+    if (address.ss_family == AF_INET) {
+        const struct sockaddr_in *ipv4 = (const struct sockaddr_in *)&address;
+        return (ntohl(ipv4->sin_addr.s_addr) >> 8) == 0xC0A804UL;
+    }
+    if (address.ss_family == AF_INET6) {
+        const struct sockaddr_in6 *ipv6 = (const struct sockaddr_in6 *)&address;
+        const uint8_t *bytes = (const uint8_t *)&ipv6->sin6_addr;
+        return bytes[0] == 0 && bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0 &&
+               bytes[4] == 0 && bytes[5] == 0 && bytes[6] == 0 && bytes[7] == 0 &&
+               bytes[8] == 0 && bytes[9] == 0 && bytes[10] == 0xff &&
+               bytes[11] == 0xff && bytes[12] == 192 && bytes[13] == 168 &&
+               bytes[14] == 4;
+    }
+    return false;
 }
 
 static void url_decode(char *value)
@@ -104,7 +114,10 @@ static esp_err_t reject_non_ap(httpd_req_t *request)
 {
     if (request_from_ap(request)) return ESP_OK;
     httpd_resp_set_status(request, "403 Forbidden");
-    httpd_resp_sendstr(request, "Forbidden");
+    httpd_resp_set_type(request, "text/plain; charset=utf-8");
+    httpd_resp_sendstr(request,
+                       "Forbidden: connect to the WT32-Setup AP first, then open "
+                       "http://192.168.4.1/");
     return ESP_ERR_INVALID_STATE;
 }
 
@@ -312,13 +325,7 @@ esp_err_t network_manager_start_pve_portal(void)
     uint8_t mac[6] = {0};
     esp_wifi_get_mac(WIFI_IF_STA, mac);
     snprintf(s_status.ssid, sizeof(s_status.ssid), "WT32-Setup-%02X%02X", mac[4], mac[5]);
-    static const char alphabet[] = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-    uint8_t random_bytes[12];
-    esp_fill_random(random_bytes, sizeof(random_bytes));
-    for (size_t i = 0; i < sizeof(random_bytes); ++i) {
-        s_status.password[i] = alphabet[random_bytes[i] % (sizeof(alphabet) - 1)];
-    }
-    s_status.password[sizeof(random_bytes)] = '\0';
+    s_status.password[0] = '\0';
     s_status.active = true;
     s_status.seconds_remaining = PROVISIONING_TIMEOUT_MS / 1000;
     s_started_at = xTaskGetTickCount();
@@ -331,7 +338,7 @@ esp_err_t network_manager_start_pve_portal(void)
     ap.ap.ssid_len = strlen(status.ssid);
     ap.ap.channel = 1;
     ap.ap.max_connection = 4;
-    ap.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    ap.ap.authmode = WIFI_AUTH_OPEN;
     esp_err_t err = esp_wifi_set_mode(WIFI_MODE_APSTA);
     if (err == ESP_OK) err = esp_wifi_set_config(WIFI_IF_AP, &ap);
     if (err == ESP_OK && xTaskCreate(dns_task, "captive_dns", 4096, NULL, 4,
