@@ -35,9 +35,13 @@ class DashboardUiContractTest(unittest.TestCase):
         self.assertNotIn("capacity_bytes", UI)
 
     def test_loading_offline_and_refresh_failure_are_distinct(self):
-        for marker in ('"数据加载中"', "APP_MODEL_EVENT_LOADING", "APP_MODEL_EVENT_OFFLINE",
-                       "APP_MODEL_EVENT_REFRESH_FAILED", '"刷新失败，已显示上次数据"'):
+        for marker in ("APP_MODEL_EVENT_LOADING", "APP_MODEL_EVENT_OFFLINE",
+                       "APP_MODEL_EVENT_REFRESH_FAILED", '"刷新失败，已显示上次数据"',
+                       "format_monitor_message", "event->error",
+                       "请到设置页配置 AP", "只读 SNMP Community",
+                       "Token Secret 和 CA", "LV_LABEL_LONG_WRAP"):
             self.assertIn(marker, UI)
+        self.assertNotIn('"数据加载中"', UI)
         self.assertNotIn("离线 · 缓存", UI)
 
     def test_top_wifi_status_updates_independently_of_monitor_snapshots(self):

@@ -161,6 +161,9 @@ typedef struct {
     lv_obj_t *pve_cpu_bar;
     lv_obj_t *pve_memory_bar;
     lv_obj_t *pve_storage_bar;
+    lv_obj_t *pve_metrics;
+    lv_obj_t *pve_error_panel;
+    lv_obj_t *pve_error_message;
     pve_view_t pve_view;
     lv_obj_t *pve_node_view;
     lv_obj_t *pve_vm_list;
@@ -594,10 +597,8 @@ static void apply_theme(void)
     set_refresh_button_state();
     set_homepage_button_state();
     if (s_ui.theme_name != NULL) lv_label_set_text(s_ui.theme_name, palette()->name);
-    if (s_ui.has_snapshot) {
-        update_pve();
-        update_nas();
-    }
+    if (s_ui.has_pve_snapshot) update_pve();
+    if (s_ui.has_nas_snapshot) update_nas();
     if (s_ui.root != NULL) lv_obj_invalidate(s_ui.root);
 }
 
@@ -751,6 +752,7 @@ static void create_pve_page(lv_obj_t *page)
     lv_obj_t *metrics = make_surface(
         s_ui.pve_node_view, 8, 48, 464,
         PVE_METRIC_ROW_HEIGHT * 2 + PVE_PROCESSOR_ROW_HEIGHT + 2);
+    s_ui.pve_metrics = metrics;
     s_ui.pve_rules[3] = make_rule(metrics, PVE_NARROW_WIDTH, 0, 1,
                                   PVE_METRIC_ROW_HEIGHT * 2);
     s_ui.pve_rules[4] = make_rule(metrics, 0, PVE_METRIC_ROW_HEIGHT, 464, 1);
@@ -892,6 +894,14 @@ static void create_pve_page(lv_obj_t *page)
                                            &app_font_14, COLOR_MUTED);
         set_hidden(s_ui.vm_rows[i], true);
     }
+
+    s_ui.pve_error_panel = make_surface(s_ui.pve_node_view, 8, 48, 464, 228);
+    s_ui.pve_error_message = make_label(s_ui.pve_error_panel, "", 16, 24, 432,
+                                        &app_font_14, COLOR_MUTED);
+    lv_label_set_long_mode(s_ui.pve_error_message, LV_LABEL_LONG_WRAP);
+    lv_obj_set_height(s_ui.pve_error_message, 180);
+    lv_obj_set_style_text_align(s_ui.pve_error_message, LV_TEXT_ALIGN_CENTER, 0);
+    set_hidden(s_ui.pve_error_panel, true);
 
     s_ui.vm_detail = make_surface(page, 8, 4, 464, 276);
     lv_obj_add_flag(s_ui.vm_detail, LV_OBJ_FLAG_CLICKABLE);
@@ -1037,7 +1047,13 @@ static void update_nas_disks(void)
     char value[96];
     update_nas_disk_sort_buttons();
     if (!nas_live) {
-        lv_label_set_text(s_ui.nas_disk_empty, "NAS 离线");
+        if (snapshot->nas_last_error[0] != '\0')
+            lv_label_set_text_fmt(s_ui.nas_disk_empty, "NAS 数据异常\n问题：%s",
+                                  snapshot->nas_last_error);
+        else
+            lv_label_set_text(s_ui.nas_disk_empty, "NAS 离线");
+        lv_label_set_long_mode(s_ui.nas_disk_empty, LV_LABEL_LONG_WRAP);
+        lv_obj_set_height(s_ui.nas_disk_empty, 92);
         set_hidden(s_ui.nas_disk_empty, false);
         set_hidden(s_ui.nas_disk_previous, true);
         set_hidden(s_ui.nas_disk_next, true);
@@ -1102,8 +1118,10 @@ static void create_nas_page(lv_obj_t *page)
     lv_obj_clear_flag(s_ui.nas_overview, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_ui.nas_overview, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(s_ui.nas_overview, nas_pool_list_event, LV_EVENT_CLICKED, NULL);
-    s_ui.nas_overview_message = make_label(s_ui.nas_overview, "数据加载中", 16, 92,
+    s_ui.nas_overview_message = make_label(s_ui.nas_overview, "正在连接 NAS\n请到设置页", 16, 74,
                                             448, &app_font_14, COLOR_MUTED);
+    lv_label_set_long_mode(s_ui.nas_overview_message, LV_LABEL_LONG_WRAP);
+    lv_obj_set_height(s_ui.nas_overview_message, 96);
     lv_obj_set_style_text_align(s_ui.nas_overview_message, LV_TEXT_ALIGN_CENTER, 0);
     for (int i = 0; i < NAS_VISIBLE; ++i) {
         s_ui.nas_rows[i] = lv_btn_create(s_ui.nas_overview);
@@ -1874,6 +1892,9 @@ static void update_pve(void)
 {
     const app_snapshot_t *snapshot = &s_ui.snapshot;
     char buffer[200], total[24], used[24], uptime[32];
+    set_hidden(s_ui.pve_error_panel, true);
+    set_hidden(s_ui.pve_metrics, false);
+    set_hidden(s_ui.pve_vm_list_button, false);
     if (snapshot->pve_online) {
         lv_label_set_text_fmt(s_ui.pve_name, "%s",
                               snapshot->pve_name[0] ? snapshot->pve_name : "p330");
@@ -2132,12 +2153,19 @@ static void show_monitor_message(app_monitor_t monitor, const char *message)
         set_hidden(s_ui.nas_pool_next, true);
         set_hidden(s_ui.nas_pool_page, true);
         lv_label_set_text(s_ui.nas_overview_message, message);
+        lv_label_set_long_mode(s_ui.nas_overview_message, LV_LABEL_LONG_WRAP);
         set_hidden(s_ui.nas_overview_message, false);
         lv_label_set_text(s_ui.nas_disk_empty, message);
+        lv_label_set_long_mode(s_ui.nas_disk_empty, LV_LABEL_LONG_WRAP);
+        lv_obj_set_height(s_ui.nas_disk_empty, 92);
         set_hidden(s_ui.nas_disk_empty, false);
     } else if (monitor == APP_MONITOR_PVE) {
         show_pve_node();
-        lv_label_set_text(s_ui.pve_name, message);
+        set_hidden(s_ui.pve_error_panel, false);
+        set_hidden(s_ui.pve_metrics, true);
+        set_hidden(s_ui.pve_vm_list_button, true);
+        lv_label_set_text(s_ui.pve_error_message, message);
+        lv_label_set_long_mode(s_ui.pve_error_message, LV_LABEL_LONG_WRAP);
         lv_label_set_text(s_ui.pve_version, "--");
         lv_label_set_text(s_ui.pve_host, "--");
         lv_label_set_text(s_ui.pve_uptime, "--");
@@ -2155,6 +2183,41 @@ static void show_monitor_message(app_monitor_t monitor, const char *message)
     }
 }
 
+static void format_monitor_message(app_monitor_t monitor, const char *error,
+                                   char *message, size_t message_size)
+{
+    const char *detail = error != NULL && error[0] != '\0' ? error : "数据异常";
+    if (strstr(detail, "Wi-Fi") != NULL || strstr(detail, "WiFi") != NULL) {
+        snprintf(message, message_size,
+                 "Wi-Fi 未连接\n请到设置页扫描并连接 Wi-Fi");
+        return;
+    }
+    if (monitor == APP_MONITOR_NAS &&
+        (strstr(detail, "SNMP") != NULL || strstr(detail, "Community") != NULL)) {
+        snprintf(message, message_size,
+             "NAS 数据异常\n请到设置页配置 AP\n"
+                 "在 192.168.4.1 填写只读 SNMP Community");
+        return;
+    }
+    if (monitor == APP_MONITOR_PVE &&
+        (strstr(detail, "Token") != NULL || strstr(detail, "CA") != NULL)) {
+        snprintf(message, message_size,
+                 "PVE 数据异常\n请到设置页配置 AP\n"
+                 "在 192.168.4.1 填写 Token Secret 和 CA");
+        return;
+    }
+    snprintf(message, message_size,
+             "%s 数据刷新失败\n请到设置页\n问题：%s",
+             monitor == APP_MONITOR_PVE ? "PVE" : "NAS", detail);
+}
+
+static void format_monitor_loading_message(app_monitor_t monitor, char *message,
+                                            size_t message_size)
+{
+    snprintf(message, message_size, "正在连接 %s\n请到设置页",
+             monitor == APP_MONITOR_PVE ? "PVE" : "NAS");
+}
+
 void dashboard_ui_update(app_model_event_t *event)
 {
     if (event == NULL || s_ui.root == NULL) return;
@@ -2162,17 +2225,29 @@ void dashboard_ui_update(app_model_event_t *event)
         s_ui.has_nas_snapshot : event->monitor == APP_MONITOR_PVE ?
         s_ui.has_pve_snapshot : s_ui.has_snapshot;
     if (event->kind == APP_MODEL_EVENT_LOADING) {
-        if (!monitor_has_snapshot) show_monitor_message(event->monitor, "数据加载中");
+        if (!monitor_has_snapshot) {
+            char message[APP_TEXT_LARGE * 2];
+            format_monitor_loading_message(event->monitor, message, sizeof(message));
+            show_monitor_message(event->monitor, message);
+        }
         return;
     }
     if (event->kind == APP_MODEL_EVENT_REFRESH_FAILED) {
         if (monitor_has_snapshot) show_refresh_toast();
-        else show_monitor_message(event->monitor, "设备离线");
+        else {
+            char message[APP_TEXT_LARGE * 2];
+            format_monitor_message(event->monitor, event->error, message, sizeof(message));
+            show_monitor_message(event->monitor, message);
+        }
         return;
     }
     if (event->kind == APP_MODEL_EVENT_OFFLINE) {
         if (monitor_has_snapshot) show_refresh_toast();
-        else show_monitor_message(event->monitor, "设备离线");
+        else {
+            char message[APP_TEXT_LARGE * 2];
+            format_monitor_message(event->monitor, event->error, message, sizeof(message));
+            show_monitor_message(event->monitor, message);
+        }
         return;
     }
     if (event->kind != APP_MODEL_EVENT_SNAPSHOT || event->snapshot == NULL) return;
@@ -2186,6 +2261,8 @@ void dashboard_ui_update(app_model_event_t *event)
     lv_label_set_text(s_ui.ip_label,
                       snapshot->wifi_connected && snapshot->ip_address[0] != '\0' ?
                       snapshot->ip_address : "WiFi未连接，请到设置里面设置");
-    update_pve();
-    update_nas();
+    if (event->monitor == APP_MONITOR_PVE || s_ui.has_pve_snapshot)
+        update_pve();
+    if (event->monitor == APP_MONITOR_NAS || s_ui.has_nas_snapshot)
+        update_nas();
 }
