@@ -78,6 +78,22 @@ class DashboardUiContractTest(unittest.TestCase):
         self.assertIn("apply_scheduled_brightness", clock)
         self.assertIn('lv_label_set_text(s_ui.time_label, "--:--")', clock)
 
+    def test_wifi_password_dialog_keeps_keyboard_inside_dialog_and_starts_visible(self):
+        dialog = UI[UI.index("static void wifi_connect_event"):
+                    UI.index("static void close_portal_overlay")]
+        for marker in (
+            "password_visibility_event",
+            "LV_SYMBOL_EYE_OPEN",
+            "lv_textarea_set_password_mode(s_ui.password_textarea, false)",
+            'lv_textarea_set_password_bullet(s_ui.password_textarea, "*")',
+            "lv_textarea_set_password_show_time(s_ui.password_textarea, 0)",
+            "make_surface(overlay, 8, 8, 464, 304)",
+            "lv_obj_set_size(keyboard, 446, 202)",
+            "LV_ALIGN_BOTTOM_MID",
+        ):
+            self.assertIn(marker, dialog)
+        self.assertIn("lv_textarea_set_password_mode(s_ui.password_textarea, hidden)", UI)
+
     def test_refresh_failure_toast_is_centered_transient_and_noninteractive(self):
         for marker in ("show_refresh_toast", "lv_obj_center(s_ui.toast)",
                        "lv_obj_clear_flag(s_ui.toast, LV_OBJ_FLAG_CLICKABLE)",

@@ -1483,6 +1483,18 @@ static void password_cancel_event(lv_event_t *event)
     if (lv_event_get_code(event) == LV_EVENT_CLICKED) close_password_overlay();
 }
 
+static void password_visibility_event(lv_event_t *event)
+{
+    if (lv_event_get_code(event) != LV_EVENT_CLICKED || s_ui.password_textarea == NULL)
+        return;
+    const bool hidden = !lv_textarea_get_password_mode(s_ui.password_textarea);
+    const uint32_t cursor = lv_textarea_get_cursor_pos(s_ui.password_textarea);
+    lv_textarea_set_password_mode(s_ui.password_textarea, hidden);
+    lv_textarea_set_cursor_pos(s_ui.password_textarea, cursor);
+    lv_obj_t *icon = lv_obj_get_child(lv_event_get_target(event), 0);
+    lv_label_set_text(icon, hidden ? LV_SYMBOL_EYE_CLOSE : LV_SYMBOL_EYE_OPEN);
+}
+
 static void wifi_connect_event(lv_event_t *event)
 {
     if (lv_event_get_code(event) != LV_EVENT_CLICKED || s_ui.password_overlay != NULL) return;
@@ -1496,22 +1508,32 @@ static void wifi_connect_event(lv_event_t *event)
     lv_obj_t *overlay = lv_obj_create(lv_layer_top());
     lv_obj_remove_style_all(overlay);
     lv_obj_set_size(overlay, WT32_LCD_WIDTH, WT32_LCD_HEIGHT);
-    lv_obj_set_style_bg_color(overlay, color(0x000000), 0);
+    lv_obj_set_style_bg_color(overlay, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(overlay, LV_OPA_70, 0);
     lv_obj_clear_flag(overlay, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t *dialog = make_surface(overlay, 24, 16, 432, 288);
-    make_label(dialog, ssid, 14, 10, 260, &app_font_18, COLOR_TEXT);
+    lv_obj_t *dialog = make_surface(overlay, 8, 8, 464, 304);
+    make_label(dialog, ssid, 12, 10, 332, &app_font_18, COLOR_TEXT);
+    make_button(dialog, "取消", 356, 4, 94, 30, password_cancel_event, NULL);
     s_ui.password_textarea = lv_textarea_create(dialog);
-    lv_obj_set_pos(s_ui.password_textarea, 14, 42);
-    lv_obj_set_size(s_ui.password_textarea, 300, 38);
-    lv_textarea_set_password_mode(s_ui.password_textarea, true);
+    lv_obj_set_pos(s_ui.password_textarea, 12, 42);
     lv_textarea_set_one_line(s_ui.password_textarea, true);
+    lv_obj_set_style_text_font(s_ui.password_textarea, &app_font_14, 0);
+    lv_obj_set_size(s_ui.password_textarea, 438, 40);
+    lv_obj_set_style_pad_right(s_ui.password_textarea, 52, 0);
+    lv_textarea_set_password_mode(s_ui.password_textarea, false);
+    lv_textarea_set_password_bullet(s_ui.password_textarea, "*");
+    lv_textarea_set_password_show_time(s_ui.password_textarea, 0);
     lv_textarea_set_max_length(s_ui.password_textarea, 64);
     lv_textarea_set_placeholder_text(s_ui.password_textarea, "Wi-Fi 密码");
-    make_button(dialog, "取消", 324, 42, 92, 38, password_cancel_event, NULL);
+    lv_obj_t *visibility = make_button(dialog, LV_SYMBOL_EYE_OPEN, 404, 43, 44, 38,
+                                       password_visibility_event, NULL);
+    lv_obj_clear_flag(visibility, LV_OBJ_FLAG_CLICK_FOCUSABLE);
+    lv_obj_set_style_text_font(lv_obj_get_child(visibility, 0), LV_FONT_DEFAULT, 0);
     lv_obj_t *keyboard = lv_keyboard_create(dialog);
-    lv_obj_set_pos(keyboard, 8, 88);
-    lv_obj_set_size(keyboard, 416, 192);
+    lv_obj_set_size(keyboard, 446, 202);
+    /* The keyboard constructor anchors to the bottom: positive y would clip it. */
+    lv_obj_align(keyboard, LV_ALIGN_BOTTOM_MID, 0, -8);
+    lv_obj_set_style_text_font(keyboard, LV_FONT_DEFAULT, LV_PART_ITEMS);
     lv_keyboard_set_textarea(keyboard, s_ui.password_textarea);
     lv_obj_add_event_cb(keyboard, keyboard_event, LV_EVENT_READY, NULL);
     lv_obj_add_event_cb(keyboard, keyboard_event, LV_EVENT_CANCEL, NULL);
